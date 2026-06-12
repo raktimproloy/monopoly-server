@@ -300,6 +300,90 @@ export class GameController {
       }
     });
 
+    // --- 5.1 Build House Event ---
+    socket.on('build_house', async (payload: any) => {
+      const roomId = this.getSocketRoom(socket);
+      if (!roomId) return socket.emit('error_message', 'Not in a game room');
+
+      try {
+        const parsed = BuyPropertySchema.parse(payload);
+        const { playerId, tileIndex } = parsed;
+
+        const identityCheck = antiCheatGuard.verifySocketIdentity(socket, playerId);
+        if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
+
+        const { state: updatedState, log } = await this.gameService.buildHouse(roomId, playerId, tileIndex);
+
+        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
+      } catch (err: any) {
+        logger.error(`Error in build_house for room ${roomId}`, err);
+        socket.emit('error_message', err.message || 'Validation error');
+      }
+    });
+
+    // --- 5.2 Sell House Event ---
+    socket.on('sell_house', async (payload: any) => {
+      const roomId = this.getSocketRoom(socket);
+      if (!roomId) return socket.emit('error_message', 'Not in a game room');
+
+      try {
+        const parsed = BuyPropertySchema.parse(payload);
+        const { playerId, tileIndex } = parsed;
+
+        const identityCheck = antiCheatGuard.verifySocketIdentity(socket, playerId);
+        if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
+
+        const { state: updatedState, log } = await this.gameService.sellHouse(roomId, playerId, tileIndex);
+
+        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
+      } catch (err: any) {
+        logger.error(`Error in sell_house for room ${roomId}`, err);
+        socket.emit('error_message', err.message || 'Validation error');
+      }
+    });
+
+    // --- 5.3 Sell Property Event ---
+    socket.on('sell_property', async (payload: any) => {
+      const roomId = this.getSocketRoom(socket);
+      if (!roomId) return socket.emit('error_message', 'Not in a game room');
+
+      try {
+        const parsed = BuyPropertySchema.parse(payload);
+        const { playerId, tileIndex } = parsed;
+
+        const identityCheck = antiCheatGuard.verifySocketIdentity(socket, playerId);
+        if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
+
+        const { state: updatedState, log } = await this.gameService.sellProperty(roomId, playerId, tileIndex);
+
+        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
+      } catch (err: any) {
+        logger.error(`Error in sell_property for room ${roomId}`, err);
+        socket.emit('error_message', err.message || 'Validation error');
+      }
+    });
+
+    // --- 5.4 Auction Property Event ---
+    socket.on('auction_property', async (payload: any) => {
+      const roomId = this.getSocketRoom(socket);
+      if (!roomId) return socket.emit('error_message', 'Not in a game room');
+
+      try {
+        const parsed = BuyPropertySchema.parse(payload);
+        const { playerId, tileIndex } = parsed;
+
+        const identityCheck = antiCheatGuard.verifySocketIdentity(socket, playerId);
+        if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
+
+        const { state: updatedState, log } = await this.gameService.auctionProperty(roomId, playerId, tileIndex);
+
+        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
+      } catch (err: any) {
+        logger.error(`Error in auction_property for room ${roomId}`, err);
+        socket.emit('error_message', err.message || 'Validation error');
+      }
+    });
+
     // --- 6. Propose Trade Event ---
     socket.on('propose_trade', async (payload: any) => {
       const roomId = this.getSocketRoom(socket);

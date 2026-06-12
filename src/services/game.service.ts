@@ -88,6 +88,34 @@ export class GameService {
   }
 
   /**
+   * Delegates building a house to PropertyService.
+   */
+  async buildHouse(roomId: string, playerId: string, tileIndex: number): Promise<{ state: GameState; log: string }> {
+    return this.propertyService.buildHouse(roomId, playerId, tileIndex);
+  }
+
+  /**
+   * Delegates breaking a house to PropertyService.
+   */
+  async sellHouse(roomId: string, playerId: string, tileIndex: number): Promise<{ state: GameState; log: string }> {
+    return this.propertyService.sellHouse(roomId, playerId, tileIndex);
+  }
+
+  /**
+   * Delegates selling a property to PropertyService.
+   */
+  async sellProperty(roomId: string, playerId: string, tileIndex: number): Promise<{ state: GameState; log: string }> {
+    return this.propertyService.sellProperty(roomId, playerId, tileIndex);
+  }
+
+  /**
+   * Delegates property auctioning to PropertyService.
+   */
+  async auctionProperty(roomId: string, playerId: string, tileIndex: number): Promise<{ state: GameState; log: string }> {
+    return this.propertyService.auctionProperty(roomId, playerId, tileIndex);
+  }
+
+  /**
    * Delegates trade execution to TradeService.
    */
   async executeTrade(roomId: string, offer: TradeOfferPayload): Promise<{ state: GameState; log: string }> {
