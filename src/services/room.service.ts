@@ -1,0 +1,362 @@
+import { db } from '../config/database';
+import { GameState, Player, BoardTile, GameSettings } from '../../../shared/types';
+import { logger } from '../utils/logger';
+
+// In-memory fallback database for out-of-the-box local testing if PG connection is unavailable
+export const memoryRooms: Record<string, { state: GameState; version: number; templateId: number }> = {};
+export const memoryLogs: any[] = [];
+export let stateFlags = {
+  useMemoryFallback: false
+};
+
+// Standard board tiles fallback if database query fails
+export const STANDARD_TILES_FALLBACK: BoardTile[] = [
+  { index: 0, name: "GO", type: "START" },
+  { index: 1, name: "Mediterranean Avenue", type: "STREET", price: 60, rent: [2, 10, 30, 90, 160, 250], mortgageValue: 30, houseCost: 50, group: "Brown" },
+  { index: 2, name: "Community Chest", type: "CHEST" },
+  { index: 3, name: "Baltic Avenue", type: "STREET", price: 60, rent: [4, 20, 60, 180, 320, 450], mortgageValue: 30, houseCost: 50, group: "Brown" },
+  { index: 4, name: "Income Tax", type: "TAX", price: 200 },
+  { index: 5, name: "Reading Railroad", type: "RAILROAD", price: 200, rent: [25, 50, 100, 200], mortgageValue: 100 },
+  { index: 6, name: "Oriental Avenue", type: "STREET", price: 100, rent: [6, 30, 90, 270, 400, 550], mortgageValue: 50, houseCost: 50, group: "Light Blue" },
+  { index: 7, name: "Chance", type: "CHANCE" },
+  { index: 8, name: "Vermont Avenue", type: "STREET", price: 100, rent: [6, 30, 90, 270, 400, 550], mortgageValue: 50, houseCost: 50, group: "Light Blue" },
+  { index: 9, name: "Connecticut Avenue", type: "STREET", price: 120, rent: [8, 40, 100, 300, 450, 600], mortgageValue: 60, houseCost: 50, group: "Light Blue" },
+  { index: 10, name: "Just Visiting / Jail", type: "JAIL" },
+  { index: 11, name: "St. Charles Place", type: "STREET", price: 140, rent: [10, 50, 150, 450, 625, 750], mortgageValue: 70, houseCost: 100, group: "Pink" },
+  { index: 12, name: "Electric Company", type: "UTILITY", price: 150, rent: [4, 10], mortgageValue: 75 },
+  { index: 13, name: "States Avenue", type: "STREET", price: 140, rent: [10, 50, 150, 450, 625, 750], mortgageValue: 70, houseCost: 100, group: "Pink" },
+  { index: 14, name: "Virginia Avenue", type: "STREET", price: 160, rent: [12, 60, 180, 500, 700, 900], mortgageValue: 80, houseCost: 100, group: "Pink" },
+  { index: 15, name: "Pennsylvania Railroad", type: "RAILROAD", price: 200, rent: [25, 50, 100, 200], mortgageValue: 100 },
+  { index: 16, name: "St. James Place", type: "STREET", price: 180, rent: [14, 70, 200, 550, 750, 950], mortgageValue: 90, houseCost: 100, group: "Orange" },
+  { index: 17, name: "Community Chest", type: "CHEST" },
+  { index: 18, name: "Tennessee Avenue", type: "STREET", price: 180, rent: [14, 70, 200, 550, 750, 950], mortgageValue: 90, houseCost: 100, group: "Orange" },
+  { index: 19, name: "New York Avenue", type: "STREET", price: 200, rent: [16, 80, 220, 600, 800, 1000], mortgageValue: 100, houseCost: 100, group: "Orange" },
+  { index: 20, name: "Free Parking", type: "FREE_PARKING" },
+  { index: 21, name: "Kentucky Avenue", type: "STREET", price: 220, rent: [18, 90, 250, 700, 875, 1050], mortgageValue: 110, houseCost: 150, group: "Red" },
+  { index: 22, name: "Chance", type: "CHANCE" },
+  { index: 23, name: "Indiana Avenue", type: "STREET", price: 220, rent: [18, 90, 250, 700, 875, 1050], mortgageValue: 110, houseCost: 150, group: "Red" },
+  { index: 24, name: "Illinois Avenue", type: "STREET", price: 240, rent: [20, 100, 300, 750, 925, 1100], mortgageValue: 120, houseCost: 150, group: "Red" },
+  { index: 25, name: "B. & O. Railroad", type: "RAILROAD", price: 200, rent: [25, 50, 100, 200], mortgageValue: 100 },
+  { index: 26, name: "Atlantic Avenue", type: "STREET", price: 260, rent: [22, 110, 330, 800, 975, 1150], mortgageValue: 130, houseCost: 150, group: "Yellow" },
+  { index: 27, name: "Ventnor Avenue", type: "STREET", price: 260, rent: [22, 110, 330, 800, 975, 1150], mortgageValue: 130, houseCost: 150, group: "Yellow" },
+  { index: 28, name: "Water Works", type: "UTILITY", price: 150, rent: [4, 10], mortgageValue: 75 },
+  { index: 29, name: "Marvin Gardens", type: "STREET", price: 280, rent: [24, 120, 360, 850, 1025, 1200], mortgageValue: 140, houseCost: 150, group: "Yellow" },
+  { index: 30, name: "Go To Jail", type: "GO_TO_JAIL" },
+  { index: 31, name: "Pacific Avenue", type: "STREET", price: 300, rent: [26, 130, 390, 900, 1100, 1275], mortgageValue: 150, houseCost: 200, group: "Green" },
+  { index: 32, name: "North Carolina Avenue", type: "STREET", price: 300, rent: [26, 130, 390, 900, 1100, 1275], mortgageValue: 150, houseCost: 200, group: "Green" },
+  { index: 33, name: "Community Chest", type: "CHEST" },
+  { index: 34, name: "Pennsylvania Avenue", type: "STREET", price: 320, rent: [28, 150, 450, 1000, 1200, 1400], mortgageValue: 160, houseCost: 200, group: "Green" },
+  { index: 35, name: "Short Line Railroad", type: "RAILROAD", price: 200, rent: [25, 50, 100, 200], mortgageValue: 100 },
+  { index: 36, name: "Chance", type: "CHANCE" },
+  { index: 37, name: "Park Place", type: "STREET", price: 350, rent: [35, 175, 500, 1100, 1300, 1500], mortgageValue: 175, houseCost: 200, group: "Dark Blue" },
+  { index: 38, name: "Luxury Tax", type: "TAX", price: 100 },
+  { index: 39, name: "Boardwalk", type: "STREET", price: 400, rent: [50, 200, 600, 1400, 1700, 2000], mortgageValue: 200, houseCost: 200, group: "Dark Blue" }
+];
+
+export class RoomService {
+  /**
+   * Loads board template from database. Falls back to default if connection fails.
+   */
+  async loadBoardTemplate(templateName: string = 'Standard Monopoly'): Promise<{ id: number; tiles: BoardTile[] }> {
+    if (stateFlags.useMemoryFallback) {
+      return { id: 1, tiles: STANDARD_TILES_FALLBACK };
+    }
+    try {
+      const rows = await db.query(
+        'SELECT id, board_data FROM board_templates WHERE name = $1 LIMIT 1',
+        [templateName]
+      );
+      if (rows.length > 0) {
+        return {
+          id: rows[0].id,
+          tiles: rows[0].board_data.tiles as BoardTile[]
+        };
+      }
+      logger.warn(`Board template "${templateName}" not found in DB. Seeding defaults.`);
+      return { id: 1, tiles: STANDARD_TILES_FALLBACK };
+    } catch (err) {
+      logger.warn('Failed to connect to database. Falling back to in-memory mode.', err);
+      stateFlags.useMemoryFallback = true;
+      return { id: 1, tiles: STANDARD_TILES_FALLBACK };
+    }
+  }
+
+  /**
+   * Initializes a new room state in the database or cache. Start in LOBBY state.
+   */
+  async createRoom(roomId: string, templateName: string, initialPlayers: { id: string; name: string; avatar: string }[]): Promise<GameState> {
+    const { id: templateId, tiles } = await this.loadBoardTemplate(templateName);
+
+    const playersMap: Record<string, Player> = {};
+    const playerOrder: string[] = [];
+
+    const defaultSettings: GameSettings = {
+      startingCash: 1500,
+      doubleRentOnCompleteSet: true,
+      freeParkingCashPool: false
+    };
+
+    initialPlayers.forEach((p) => {
+      playersMap[p.id] = {
+        id: p.id,
+        name: p.name,
+        position: 0,
+        balance: defaultSettings.startingCash,
+        isBankrupt: false,
+        inJail: false,
+        jailTurns: 0,
+        avatar: p.avatar
+      };
+      playerOrder.push(p.id);
+    });
+
+    const initialState: GameState = {
+      roomId,
+      players: playersMap,
+      playerOrder,
+      currentTurnPlayerId: playerOrder[0] || '',
+      properties: {},
+      dice: [1, 1],
+      doubleRollCount: 0,
+      gameStatus: 'LOBBY', // Initialized as LOBBY, waiting for players
+      winnerId: null,
+      turnStatus: 'MUST_ROLL',
+      settings: defaultSettings
+    };
+
+    if (stateFlags.useMemoryFallback) {
+      memoryRooms[roomId] = {
+        state: initialState,
+        version: 1,
+        templateId
+      };
+      logger.info(`Room ${roomId} created in-memory fallback successfully`);
+      return initialState;
+    }
+
+    try {
+      await db.query(
+        'INSERT INTO game_rooms (room_id, board_template_id, state, version) VALUES ($1, $2, $3, 1) ON CONFLICT (room_id) DO UPDATE SET board_template_id = EXCLUDED.board_template_id, state = EXCLUDED.state, version = game_rooms.version + 1',
+        [roomId, templateId, JSON.stringify(initialState)]
+      );
+      logger.info(`Room ${roomId} initialized in database successfully`);
+      return initialState;
+    } catch (err) {
+      logger.warn('Database insert failed. Creating room in-memory instead.', err);
+      stateFlags.useMemoryFallback = true;
+      memoryRooms[roomId] = {
+        state: initialState,
+        version: 1,
+        templateId
+      };
+      return initialState;
+    }
+  }
+
+  /**
+   * Adds a new player or updates an existing player's profile inside the LOBBY.
+   */
+  async joinRoom(roomId: string, player: { id: string; name: string; avatar: string }): Promise<GameState> {
+    const state = await this.getRoomState(roomId);
+    if (!state) {
+      // Dynamic room fallback
+      return this.createRoom(roomId, 'Standard Monopoly', [player]);
+    }
+
+    const newState = JSON.parse(JSON.stringify(state)) as GameState;
+
+    if (newState.gameStatus !== 'LOBBY') {
+      // If game is active and player is rejoining, return existing state
+      if (newState.players[player.id]) {
+        return newState;
+      }
+      throw new Error('Game session has already started in this room.');
+    }
+
+    // Add or update player details (allows edit of callsign and appearance!)
+    if (newState.players[player.id]) {
+      newState.players[player.id].name = player.name;
+      newState.players[player.id].avatar = player.avatar;
+    } else {
+      newState.players[player.id] = {
+        id: player.id,
+        name: player.name,
+        position: 0,
+        balance: newState.settings.startingCash,
+        isBankrupt: false,
+        inJail: false,
+        jailTurns: 0,
+        avatar: player.avatar
+      };
+      newState.playerOrder.push(player.id);
+    }
+
+    const resultState = await this.updateRoomState(
+      roomId,
+      newState,
+      player.id,
+      'JOIN_LOBBY',
+      { name: player.name, avatar: player.avatar },
+      `${player.name} connected to lobby slot.`
+    );
+
+    return resultState;
+  }
+
+  /**
+   * Updates game settings inside the LOBBY.
+   */
+  async updateSettings(roomId: string, settings: GameSettings, playerId: string): Promise<GameState> {
+    const state = await this.getRoomState(roomId);
+    if (!state) throw new Error(`Room ${roomId} not found.`);
+
+    if (state.gameStatus !== 'LOBBY') {
+      throw new Error('Cannot change configuration parameters after match start.');
+    }
+
+    const newState = JSON.parse(JSON.stringify(state)) as GameState;
+    
+    // Update setting parameters
+    newState.settings = settings;
+
+    // Reset player balances to match new starting balance configuration
+    Object.keys(newState.players).forEach((pId) => {
+      newState.players[pId].balance = settings.startingCash;
+    });
+
+    const resultState = await this.updateRoomState(
+      roomId,
+      newState,
+      playerId,
+      'UPDATE_SETTINGS',
+      settings,
+      `Match rule configurations updated: Starting Cash: $${settings.startingCash}, Double Rent: ${settings.doubleRentOnCompleteSet}, Free Parking Pool: ${settings.freeParkingCashPool}`
+    );
+
+    return resultState;
+  }
+
+  /**
+   * Commits the lobby and begins active game play.
+   */
+  async startGame(roomId: string, playerId: string): Promise<GameState> {
+    const state = await this.getRoomState(roomId);
+    if (!state) throw new Error(`Room ${roomId} not found.`);
+
+    if (state.gameStatus !== 'LOBBY') {
+      throw new Error('Session is already active.');
+    }
+
+    if (state.playerOrder.length < 2) {
+      // Add a mock CPU player if there is only 1 user, to make it single-player testable out-of-the-box
+      state.players['cpu_player'] = {
+        id: 'cpu_player',
+        name: 'BoardMaster CPU',
+        position: 0,
+        balance: state.settings.startingCash,
+        isBankrupt: false,
+        inJail: false,
+        jailTurns: 0,
+        avatar: '#BC13FE' // purple
+      };
+      state.playerOrder.push('cpu_player');
+    }
+
+    const newState = JSON.parse(JSON.stringify(state)) as GameState;
+
+    // Randomize initial turn order sequence
+    newState.playerOrder.sort(() => Math.random() - 0.5);
+    newState.currentTurnPlayerId = newState.playerOrder[0];
+    newState.gameStatus = 'ACTIVE';
+    newState.turnStatus = 'MUST_ROLL';
+
+    const resultState = await this.updateRoomState(
+      roomId,
+      newState,
+      playerId,
+      'START_GAME',
+      {},
+      `Match initiated! Converted lobby connection to active board. First turn: ${newState.players[newState.currentTurnPlayerId].name}`
+    );
+
+    return resultState;
+  }
+
+  /**
+   * Loads active game state.
+   */
+  async getRoomState(roomId: string): Promise<GameState | null> {
+    if (stateFlags.useMemoryFallback) {
+      return memoryRooms[roomId]?.state || null;
+    }
+    try {
+      const rows = await db.query('SELECT state FROM game_rooms WHERE room_id = $1 LIMIT 1', [roomId]);
+      if (rows.length === 0) return null;
+      return rows[0].state as GameState;
+    } catch (err) {
+      logger.warn('Database read failed. Reading from in-memory fallback.', err);
+      stateFlags.useMemoryFallback = true;
+      return memoryRooms[roomId]?.state || null;
+    }
+  }
+
+  /**
+   * Saves updated game state and audit log in a safe transaction (with optimistic locking).
+   */
+  async updateRoomState(
+    roomId: string,
+    newState: GameState,
+    playerId: string,
+    actionType: string,
+    actionPayload: any,
+    logMessage: string
+  ): Promise<GameState> {
+    logger.game(roomId, actionType, playerId, logMessage);
+
+    if (stateFlags.useMemoryFallback) {
+      const room = memoryRooms[roomId];
+      if (!room) throw new Error(`Room ${roomId} does not exist in memory cache.`);
+      room.state = newState;
+      room.version += 1;
+
+      memoryLogs.push({
+        room_id: roomId,
+        player_id: playerId,
+        action_type: actionType,
+        action_payload: actionPayload,
+        state_snapshot: newState,
+        created_at: new Date()
+      });
+      return newState;
+    }
+
+    try {
+      await db.transaction(async (client) => {
+        const versionRes = await client.query('SELECT version FROM game_rooms WHERE room_id = $1 FOR UPDATE', [roomId]);
+        if (versionRes.rows.length === 0) {
+          throw new Error(`Room ${roomId} not found during update.`);
+        }
+        const currentVersion = versionRes.rows[0].version;
+
+        const updateRes = await client.query(
+          'UPDATE game_rooms SET state = $1, version = version + 1 WHERE room_id = $2 AND version = $3 RETURNING version',
+          [JSON.stringify(newState), roomId, currentVersion]
+        );
+
+        if (updateRes.rows.length === 0) {
+          throw new Error(`Concurrency check failed for Room ${roomId}. State has been updated by another process.`);
+        }
+
+        await client.query(
+          'INSERT INTO game_logs (room_id, player_id, action_type, action_payload, state_snapshot) VALUES ($1, $2, $3, $4, $5)',
+          [roomId, playerId, actionType, JSON.stringify(actionPayload), JSON.stringify(newState)]
+        );
+      });
+
+      return newState;
+    } catch (error) {
+      logger.error(`Failed to update state for room ${roomId}. Error:`, error);
+      throw error;
+    }
+  }
+}
