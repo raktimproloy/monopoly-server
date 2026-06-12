@@ -17,6 +17,14 @@ export const EndTurnSchema = z.object({
   playerId: z.string().min(1),
 });
 
+export const DeclareBankruptcySchema = z.object({
+  playerId: z.string().min(1),
+});
+
+export const PayJailFineSchema = z.object({
+  playerId: z.string().min(1),
+});
+
 export const TradeOfferSchema = z.object({
   senderId: z.string().min(1),
   receiverId: z.string().min(1),
@@ -24,6 +32,8 @@ export const TradeOfferSchema = z.object({
   requestCash: z.number().nonnegative(),
   offerPropertyIndexes: z.array(z.number().int().min(0).max(39)),
   requestPropertyIndexes: z.array(z.number().int().min(0).max(39)),
+  durationSeconds: z.number().int().nonnegative().optional(),
+  expiresAt: z.number().int().nonnegative().optional(),
 });
 
 export const TradeResponseSchema = z.object({

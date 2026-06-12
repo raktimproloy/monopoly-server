@@ -6,6 +6,8 @@ import {
   RollDiceSchema,
   BuyPropertySchema,
   EndTurnSchema,
+  DeclareBankruptcySchema,
+  PayJailFineSchema,
   TradeOfferSchema,
   TradeResponseSchema
 } from '../middleware/socketValidation';
@@ -235,17 +237,39 @@ export class GameController {
         const receiverCheck = antiCheatGuard.verifyMembership(state, offer.receiverId);
         if (!receiverCheck.valid) return socket.emit('error_message', receiverCheck.error);
 
+        // If duration is provided, calculate expiration
+        if (offer.durationSeconds && offer.durationSeconds > 0) {
+          offer.expiresAt = Date.now() + offer.durationSeconds * 1000;
+        }
+
         // Create random trade ID
         const tradeId = `trade_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
         activeTrades[tradeId] = offer;
 
-        logger.info(`Trade proposed in room ${roomId}: ${tradeId} from ${offer.senderId} to ${offer.receiverId}`);
+        logger.info(`Trade proposed in room ${roomId}: ${tradeId} from ${offer.senderId} to ${offer.receiverId} with duration ${offer.durationSeconds || 'infinite'}s`);
 
-        // Forward proposal ONLY to the targeted receiver player (private channel event)
+        // Forward proposal to room (broadcast so everyone receives it and can track countdown/expiry)
         this.io.to(roomId).emit('trade_proposed', {
           tradeId,
           offer
         });
+
+        // Set server-side auto-expiry timeout
+        if (offer.durationSeconds && offer.durationSeconds > 0) {
+          setTimeout(async () => {
+            if (activeTrades[tradeId]) {
+              delete activeTrades[tradeId];
+              const latestState = await this.gameService.getRoomState(roomId);
+              const senderName = latestState?.players[offer.senderId]?.name || 'Player';
+              const receiverName = latestState?.players[offer.receiverId]?.name || 'Player';
+              const log = `Trade proposal between ${senderName} and ${receiverName} has expired.`;
+              
+              logger.info(`Trade ${tradeId} expired in room ${roomId}`);
+              this.io.to(roomId).emit('trade_declined', { tradeId, log });
+              this.io.to(roomId).emit('trade_resolved', { tradeId });
+            }
+          }, offer.durationSeconds * 1000);
+        }
 
       } catch (err: any) {
         logger.error(`Error in propose_trade for room ${roomId}`, err);
@@ -278,6 +302,7 @@ export class GameController {
           // Execute state mutation transaction
           const { state: updatedState, log } = await this.gameService.executeTrade(roomId, offer);
           this.io.to(roomId).emit('state_updated', { state: updatedState, log });
+          this.io.to(roomId).emit('trade_resolved', { tradeId });
         } else {
           // Emit trade refusal event
           const state = await this.gameService.getRoomState(roomId);
@@ -287,6 +312,7 @@ export class GameController {
           
           logger.info(`Trade ${tradeId} declined: ${log}`);
           this.io.to(roomId).emit('trade_declined', { tradeId, log });
+          this.io.to(roomId).emit('trade_resolved', { tradeId });
         }
 
       } catch (err: any) {
@@ -324,6 +350,60 @@ export class GameController {
       } catch (err: any) {
         logger.error(`Error in end_turn for room ${roomId}`, err);
         socket.emit('error_message', err.message || 'Validation error');
+      }
+    });
+
+    // --- 8.5 Declare Bankruptcy Event ---
+    socket.on('declare_bankruptcy', async (payload: any) => {
+      const roomId = this.getSocketRoom(socket);
+      if (!roomId) return socket.emit('error_message', 'Not in a game room');
+
+      try {
+        const { playerId } = DeclareBankruptcySchema.parse(payload);
+
+        const identityCheck = antiCheatGuard.verifySocketIdentity(socket, playerId);
+        if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
+
+        const state = await this.gameService.getRoomState(roomId);
+        if (!state) return socket.emit('error_message', 'Game session not found.');
+
+        const turnCheck = antiCheatGuard.verifyTurn(state, playerId);
+        if (!turnCheck.valid) return socket.emit('error_message', turnCheck.error);
+
+        const { state: updatedState, log } = await this.gameService.declareBankruptcy(roomId, playerId);
+
+        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
+
+      } catch (err: any) {
+        logger.error(`Error in declare_bankruptcy for room ${roomId}`, err);
+        socket.emit('error_message', err.message || 'Bankruptcy declaration failed');
+      }
+    });
+
+    // --- 8.6 Pay Jail Fine Event ---
+    socket.on('pay_jail_fine', async (payload: any) => {
+      const roomId = this.getSocketRoom(socket);
+      if (!roomId) return socket.emit('error_message', 'Not in a game room');
+
+      try {
+        const { playerId } = PayJailFineSchema.parse(payload);
+
+        const identityCheck = antiCheatGuard.verifySocketIdentity(socket, playerId);
+        if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
+
+        const state = await this.gameService.getRoomState(roomId);
+        if (!state) return socket.emit('error_message', 'Game session not found.');
+
+        const turnCheck = antiCheatGuard.verifyTurn(state, playerId);
+        if (!turnCheck.valid) return socket.emit('error_message', turnCheck.error);
+
+        const { state: updatedState, log } = await this.gameService.payJailFine(roomId, playerId);
+
+        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
+
+      } catch (err: any) {
+        logger.error(`Error in pay_jail_fine for room ${roomId}`, err);
+        socket.emit('error_message', err.message || 'Jail fine payment failed');
       }
     });
 

@@ -100,4 +100,18 @@ export class GameService {
   async endTurn(roomId: string, playerId: string): Promise<{ state: GameState; log: string }> {
     return this.actionService.endTurn(roomId, playerId);
   }
+
+  /**
+   * Delegates declaring bankruptcy to ActionService.
+   */
+  async declareBankruptcy(roomId: string, playerId: string): Promise<{ state: GameState; log: string }> {
+    return this.actionService.declareBankruptcy(roomId, playerId);
+  }
+
+  /**
+   * Delegates paying jail fine to ActionService.
+   */
+  async payJailFine(roomId: string, playerId: string): Promise<{ state: GameState; log: string }> {
+    return this.actionService.payJailFine(roomId, playerId);
+  }
 }
