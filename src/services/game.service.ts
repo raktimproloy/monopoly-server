@@ -114,4 +114,18 @@ export class GameService {
   async payJailFine(roomId: string, playerId: string): Promise<{ state: GameState; log: string }> {
     return this.actionService.payJailFine(roomId, playerId);
   }
+
+  /**
+   * Delegates player removal to RoomService.
+   */
+  async removePlayer(roomId: string, playerId: string): Promise<{ state: GameState | null; log: string; roomDeleted: boolean }> {
+    return this.roomService.removePlayer(roomId, playerId);
+  }
+
+  /**
+   * Delegates room deletion to RoomService.
+   */
+  async deleteRoom(roomId: string): Promise<void> {
+    return this.roomService.deleteRoom(roomId);
+  }
 }

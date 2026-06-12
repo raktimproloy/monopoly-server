@@ -16,6 +16,17 @@ import { TradeOfferPayload } from '../../../shared/types';
 // Simple active trade tracker for negotiation mapping
 const activeTrades: Record<string, TradeOfferPayload> = {};
 
+// Maps socket.id → roomId for fast lookup on disconnect
+const socketRoomMap: Record<string, string> = {};
+
+// Tracks last activity timestamp per room for inactivity TTL
+const roomActivity: Record<string, number> = {};
+
+// Inactivity timeout: rooms with no activity for 30 minutes are auto-deleted
+const ROOM_INACTIVITY_TTL_MS = 30 * 60 * 1000;
+// Finished game cleanup: delete finished games after 5 minutes
+const FINISHED_ROOM_TTL_MS = 5 * 60 * 1000;
+
 export class GameController {
   private io: Server;
   private gameService: GameService;
@@ -23,6 +34,50 @@ export class GameController {
   constructor(io: Server) {
     this.io = io;
     this.gameService = new GameService();
+
+    // Start periodic room cleanup sweep every 5 minutes
+    setInterval(() => this.cleanupInactiveRooms(), 5 * 60 * 1000);
+    logger.info('Room lifecycle manager initialized (TTL: 30min inactivity, 5min post-finish)');
+  }
+
+  /**
+   * Periodic sweep to remove stale/inactive rooms from memory.
+   */
+  private async cleanupInactiveRooms() {
+    const now = Date.now();
+    const roomIds = Object.keys(roomActivity);
+
+    for (const roomId of roomIds) {
+      const lastActive = roomActivity[roomId];
+      const state = await this.gameService.getRoomState(roomId);
+
+      if (!state) {
+        // Room already deleted elsewhere, clean up tracking
+        delete roomActivity[roomId];
+        continue;
+      }
+
+      const isFinished = state.gameStatus === 'FINISHED';
+      const ttl = isFinished ? FINISHED_ROOM_TTL_MS : ROOM_INACTIVITY_TTL_MS;
+
+      if (now - lastActive > ttl) {
+        logger.info(`Auto-deleting ${isFinished ? 'finished' : 'inactive'} room ${roomId} (idle ${Math.round((now - lastActive) / 1000)}s)`);
+        await this.gameService.deleteRoom(roomId);
+        delete roomActivity[roomId];
+
+        // Notify any remaining sockets in this room
+        this.io.to(roomId).emit('room_expired', {
+          reason: isFinished ? 'Game has ended.' : 'Room closed due to inactivity.'
+        });
+      }
+    }
+  }
+
+  /**
+   * Updates the last activity timestamp for a room.
+   */
+  private touchRoom(roomId: string) {
+    roomActivity[roomId] = Date.now();
   }
 
   /**
@@ -65,6 +120,32 @@ export class GameController {
       } catch (err: any) {
         logger.error(`Error in join_room for socket ${socket.id}`, err);
         socket.emit('error_message', err.message || 'Failed to join room');
+      }
+    });
+
+    // --- 1.05 Get Room Details Event ---
+    socket.on('get_room_details', async ({ roomId }: { roomId: string }, callback: (data: any) => void) => {
+      try {
+        if (!roomId) {
+          return callback({ error: 'Invalid Room ID' });
+        }
+        const state = await this.gameService.getRoomState(roomId);
+        if (!state) {
+          return callback({ exists: false, players: [] });
+        }
+        const players = Object.values(state.players).map(p => ({
+          id: p.id,
+          name: p.name,
+          avatar: p.avatar
+        }));
+        callback({
+          exists: true,
+          gameStatus: state.gameStatus,
+          players
+        });
+      } catch (err: any) {
+        logger.error(`Error in get_room_details for room ${roomId}`, err);
+        callback({ error: err.message || 'Failed to get room details' });
       }
     });
 
