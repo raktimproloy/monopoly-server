@@ -56,45 +56,45 @@ export let stateFlags = {
 // Bangladesh Division-District Board Configuration (Updated with unique names)
 export const STANDARD_TILES_FALLBACK: BoardTile[] = [
   { index: 0, name: "শুরু", type: "START" },
-  { index: 1, name: "কুড়িগ্রাম (রংপুর)", type: "STREET", price: 60, rent: [2, 10, 30, 90, 160, 250], mortgageValue: 30, houseCost: 50, group: "Brown" },
-  { index: 2, name: "ট্রেজারি", type: "CHEST" },
-  { index: 3, name: "দিনাজপুর (রংপুর)", type: "STREET", price: 60, rent: [4, 20, 60, 180, 320, 450], mortgageValue: 30, houseCost: 50, group: "Brown" },
+  { index: 1, name: "দিনাজপুর (রংপুর)", type: "STREET", price: 60, rent: [2, 10, 30, 90, 160, 250], mortgageValue: 30, houseCost: 50, group: "Brown" },
+  { index: 2, name: "গুপ্তধন", type: "CHEST" },
+  { index: 3, name: "রংপুর (রংপুর)", type: "STREET", price: 60, rent: [4, 20, 60, 180, 320, 450], mortgageValue: 30, houseCost: 50, group: "Brown" },
   { index: 4, name: "আয়কর", type: "TAX", price: 200 },
-  { index: 5, name: "ঢাকা রেল", type: "RAILROAD", price: 200, rent: [25, 50, 100, 200], mortgageValue: 100 },
-  { index: 6, name: "ঝালকাঠি (বরিশাল)", type: "STREET", price: 100, rent: [6, 30, 90, 270, 400, 550], mortgageValue: 50, houseCost: 50, group: "Light Blue" },
+  { index: 5, name: "বরিশাল রেল", type: "RAILROAD", price: 200, rent: [25, 50, 100, 200], mortgageValue: 100 },
+  { index: 6, name: "বরগুনা (বরিশাল)", type: "STREET", price: 100, rent: [6, 30, 90, 270, 400, 550], mortgageValue: 50, houseCost: 50, group: "Light Blue" },
   { index: 7, name: "ভাগ্য পরীক্ষা", type: "CHANCE" },
-  { index: 8, name: "পিরোজপুর (বরিশাল)", type: "STREET", price: 100, rent: [6, 30, 90, 270, 400, 550], mortgageValue: 50, houseCost: 50, group: "Light Blue" },
-  { index: 9, name: "বরগুনা (বরিশাল)", type: "STREET", price: 120, rent: [8, 40, 100, 300, 450, 600], mortgageValue: 60, houseCost: 50, group: "Light Blue" },
-  { index: 10, name: "কারাগার", type: "JAIL" },
+  { index: 8, name: "পটুয়াখালী (বরিশাল)", type: "STREET", price: 100, rent: [6, 30, 90, 270, 400, 550], mortgageValue: 50, houseCost: 50, group: "Light Blue" },
+  { index: 9, name: "বরিশাল (বরিশাল)", type: "STREET", price: 120, rent: [8, 40, 100, 300, 450, 600], mortgageValue: 60, houseCost: 50, group: "Light Blue" },
+  { index: 10, name: "জেল", type: "JAIL" },
   { index: 11, name: "যশোর (খুলনা)", type: "STREET", price: 140, rent: [10, 50, 150, 450, 625, 750], mortgageValue: 70, houseCost: 100, group: "Pink" },
   { index: 12, name: "বিদ্যুৎ কেন্দ্র", type: "UTILITY", price: 150, rent: [4, 10], mortgageValue: 75 },
   { index: 13, name: "কুষ্টিয়া (খুলনা)", type: "STREET", price: 140, rent: [10, 50, 150, 450, 625, 750], mortgageValue: 70, houseCost: 100, group: "Pink" },
-  { index: 14, name: "চুয়াডাঙ্গা (খুলনা)", type: "STREET", price: 160, rent: [12, 60, 180, 500, 700, 900], mortgageValue: 80, houseCost: 100, group: "Pink" },
-  { index: 15, name: "খুলনা রেল", type: "RAILROAD", price: 200, rent: [25, 50, 100, 200], mortgageValue: 100 },
+  { index: 14, name: "খুলনা (খুলনা)", type: "STREET", price: 160, rent: [12, 60, 180, 500, 700, 900], mortgageValue: 80, houseCost: 100, group: "Pink" },
+  { index: 15, name: "রাজশাহী রেল", type: "RAILROAD", price: 200, rent: [25, 50, 100, 200], mortgageValue: 100 },
   { index: 16, name: "বগুড়া (রাজশাহী)", type: "STREET", price: 180, rent: [14, 70, 200, 550, 750, 950], mortgageValue: 90, houseCost: 100, group: "Orange" },
-  { index: 17, name: "ট্রেজারি", type: "CHEST" },
-  { index: 18, name: "পাবনা (রাজশাহী)", type: "STREET", price: 180, rent: [14, 70, 200, 550, 750, 950], mortgageValue: 90, houseCost: 100, group: "Orange" },
-  { index: 19, name: "নাটোর (রাজশাহী)", type: "STREET", price: 200, rent: [16, 80, 220, 600, 800, 1000], mortgageValue: 100, houseCost: 100, group: "Orange" },
-  { index: 20, name: "ফ্রি পার্কিং", type: "FREE_PARKING" },
+  { index: 17, name: "গুপ্তধন", type: "CHEST" },
+  { index: 18, name: "নাটোর (রাজশাহী)", type: "STREET", price: 180, rent: [14, 70, 200, 550, 750, 950], mortgageValue: 90, houseCost: 100, group: "Orange" },
+  { index: 19, name: "রাজশাহী (রাজশাহী)", type: "STREET", price: 200, rent: [16, 80, 220, 600, 800, 1000], mortgageValue: 100, houseCost: 100, group: "Orange" },
+  { index: 20, name: "অবসর", type: "FREE_PARKING" },
   { index: 21, name: "সুনামগঞ্জ (সিলেট)", type: "STREET", price: 220, rent: [18, 90, 250, 700, 875, 1050], mortgageValue: 110, houseCost: 150, group: "Red" },
   { index: 22, name: "ভাগ্য পরীক্ষা", type: "CHANCE" },
   { index: 23, name: "হবিগঞ্জ (সিলেট)", type: "STREET", price: 220, rent: [18, 90, 250, 700, 875, 1050], mortgageValue: 110, houseCost: 150, group: "Red" },
-  { index: 24, name: "মৌলভীবাজার (সিলেট)", type: "STREET", price: 240, rent: [20, 100, 300, 750, 925, 1100], mortgageValue: 120, houseCost: 150, group: "Red" },
+  { index: 24, name: "সিলেট (সিলেট)", type: "STREET", price: 240, rent: [20, 100, 300, 750, 925, 1100], mortgageValue: 120, houseCost: 150, group: "Red" },
   { index: 25, name: "সিলেট রেল", type: "RAILROAD", price: 200, rent: [25, 50, 100, 200], mortgageValue: 100 },
   { index: 26, name: "কুমিল্লা (চট্টগ্রাম)", type: "STREET", price: 260, rent: [22, 110, 330, 800, 975, 1150], mortgageValue: 130, houseCost: 150, group: "Yellow" },
   { index: 27, name: "নোয়াখালী (চট্টগ্রাম)", type: "STREET", price: 260, rent: [22, 110, 330, 800, 975, 1150], mortgageValue: 130, houseCost: 150, group: "Yellow" },
   { index: 28, name: "পানি সরবরাহ", type: "UTILITY", price: 150, rent: [4, 10], mortgageValue: 75 },
-  { index: 29, name: "ফেনী (চট্টগ্রাম)", type: "STREET", price: 280, rent: [24, 120, 360, 850, 1025, 1200], mortgageValue: 140, houseCost: 150, group: "Yellow" },
+  { index: 29, name: "চট্টগ্রাম (চট্টগ্রাম)", type: "STREET", price: 280, rent: [24, 120, 360, 850, 1025, 1200], mortgageValue: 140, houseCost: 150, group: "Yellow" },
   { index: 30, name: "জেলে যাও", type: "GO_TO_JAIL" },
-  { index: 31, name: "জামালপুর (ময়মনসিংহ)", type: "STREET", price: 300, rent: [26, 130, 390, 900, 1100, 1275], mortgageValue: 150, houseCost: 200, group: "Green" },
-  { index: 32, name: "কিশোরগঞ্জ (ময়মনসিংহ)", type: "STREET", price: 300, rent: [26, 130, 390, 900, 1100, 1275], mortgageValue: 150, houseCost: 200, group: "Green" },
-  { index: 33, name: "ট্রেজারি", type: "CHEST" },
-  { index: 34, name: "নেত্রকোণা (ময়মনসিংহ)", type: "STREET", price: 320, rent: [28, 150, 450, 1000, 1200, 1400], mortgageValue: 160, houseCost: 200, group: "Green" },
-  { index: 35, name: "চট্টগ্রাম রেল", type: "RAILROAD", price: 200, rent: [25, 50, 100, 200], mortgageValue: 100 },
+  { index: 31, name: "নেত্রকোণা (ময়মনসিংহ)", type: "STREET", price: 300, rent: [26, 130, 390, 900, 1100, 1275], mortgageValue: 150, houseCost: 200, group: "Green" },
+  { index: 32, name: "শেরপুর (ময়মনসিংহ)", type: "STREET", price: 300, rent: [26, 130, 390, 900, 1100, 1275], mortgageValue: 150, houseCost: 200, group: "Green" },
+  { index: 33, name: "গুপ্তধন", type: "CHEST" },
+  { index: 34, name: "ময়মনসিংহ (ময়মনসিংহ)", type: "STREET", price: 320, rent: [28, 150, 450, 1000, 1200, 1400], mortgageValue: 160, houseCost: 200, group: "Green" },
+  { index: 35, name: "ঢাকা রেল", type: "RAILROAD", price: 200, rent: [25, 50, 100, 200], mortgageValue: 100 },
   { index: 36, name: "ভাগ্য পরীক্ষা", type: "CHANCE" },
-  { index: 37, name: "গাজীপুর (ঢাকা)", type: "STREET", price: 350, rent: [35, 175, 500, 1100, 1300, 1500], mortgageValue: 175, houseCost: 200, group: "Dark Blue" },
-  { index: 38, name: "বিলাসবহুল কর", type: "TAX", price: 100 },
-  { index: 39, name: "নারায়ণগঞ্জ (ঢাকা)", type: "STREET", price: 400, rent: [50, 200, 600, 1400, 1700, 2000], mortgageValue: 200, houseCost: 200, group: "Dark Blue" }
+  { index: 37, name: "গুলশান (ঢাকা)", type: "STREET", price: 350, rent: [35, 175, 500, 1100, 1300, 1500], mortgageValue: 175, houseCost: 200, group: "Dark Blue" },
+  { index: 38, name: "আয়কর", type: "TAX", price: 100 },
+  { index: 39, name: "ঢাকা (ঢাকা)", type: "STREET", price: 400, rent: [50, 200, 600, 1400, 1700, 2000], mortgageValue: 200, houseCost: 200, group: "Dark Blue" }
 ];
 
 export class RoomService {
@@ -249,7 +249,7 @@ export class RoomService {
       player.id,
       'JOIN_LOBBY',
       { name: player.name, avatar: player.avatar },
-      `${player.name} connected to lobby slot.`
+      `[SYS] ${player.name} connected to lobby slot.`
     );
 
     return resultState;
@@ -282,7 +282,7 @@ export class RoomService {
       playerId,
       'UPDATE_SETTINGS',
       settings,
-      `Match rule configurations updated: Starting Cash: $${settings.startingCash}, Double Rent: ${settings.doubleRentOnCompleteSet}, Free Parking Pool: ${settings.freeParkingCashPool}`
+      `[SYS] Match rule configurations updated: Starting Cash: ৳${settings.startingCash}, Double Rent: ${settings.doubleRentOnCompleteSet}, Free Parking Pool: ${settings.freeParkingCashPool}`
     );
 
     return resultState;
@@ -328,7 +328,7 @@ export class RoomService {
       playerId,
       'START_GAME',
       {},
-      `Match initiated! Converted lobby connection to active board. First turn: ${newState.players[newState.currentTurnPlayerId].name}`
+      `[SYS] Match initiated! First turn: ${newState.players[newState.currentTurnPlayerId].name}`
     );
 
     return resultState;
@@ -440,9 +440,9 @@ export class RoomService {
       const savedState = await this.updateRoomState(
         roomId, newState, playerId, 'PLAYER_LEFT',
         { playerId },
-        `${player.name} disconnected from the lobby.`
+        `[SYS] ${player.name} disconnected from the lobby.`
       );
-      return { state: savedState, log: `${player.name} disconnected from the lobby.`, roomDeleted: false };
+      return { state: savedState, log: `[SYS] ${player.name} disconnected from the lobby.`, roomDeleted: false };
     }
 
     if (newState.gameStatus === 'ACTIVE') {
@@ -472,7 +472,7 @@ export class RoomService {
 
       // Check if game is finished (only 1 non-bankrupt player left)
       const activePlayers = Object.values(newState.players).filter(p => !p.isBankrupt);
-      let description = `${player.name} disconnected and forfeited. All properties returned to bank.`;
+      let description = `[SYS] ${player.name} disconnected and forfeited. Assets returned to bank.`;
       if (activePlayers.length <= 1) {
         newState.gameStatus = 'FINISHED';
         newState.winnerId = activePlayers[0]?.id || null;

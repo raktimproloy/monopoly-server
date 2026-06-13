@@ -116,6 +116,20 @@ export class GameService {
   }
 
   /**
+   * Delegates placing a bid to PropertyService.
+   */
+  async placeBid(roomId: string, playerId: string, amountToAdd: number): Promise<{ state: GameState; log: string }> {
+    return this.propertyService.placeBid(roomId, playerId, amountToAdd);
+  }
+
+  /**
+   * Delegates resolving an auction to PropertyService.
+   */
+  async resolveAuction(roomId: string): Promise<{ state: GameState; log: string }> {
+    return this.propertyService.resolveAuction(roomId);
+  }
+
+  /**
    * Delegates trade execution to TradeService.
    */
   async executeTrade(roomId: string, offer: TradeOfferPayload): Promise<{ state: GameState; log: string }> {

@@ -45,7 +45,7 @@ export function executeMovement(
         player.inJail = false;
         player.jailTurns = 0;
         player.balance -= 50;
-        description += ` failed to roll doubles for 3 turns. Paid $50 to get out of Jail.`;
+      description += ` failed to roll doubles for 3 turns. Paid ৳50 to get out of Jail.`;
       } else {
         description += ` remains in Jail (turn ${player.jailTurns}/3).`;
         newState.turnStatus = 'MUST_ACT_OR_END';
@@ -80,7 +80,7 @@ export function executeMovement(
   // Check if passed GO
   if (newPosition < oldPosition) {
     player.balance += 200;
-    description += ` and moved from tile ${oldPosition} to ${newPosition}, passing GO and collecting $200.`;
+    description += ` and moved from tile ${oldPosition} to ${newPosition}, passing GO and collecting ৳200.`;
   } else {
     description += ` and moved from tile ${oldPosition} to ${newPosition}.`;
   }
@@ -104,7 +104,7 @@ export function executeMovement(
   if (destTile.type === 'TAX') {
     const taxCost = destTile.price || 100;
     player.balance -= taxCost;
-    description += ` Landed on tax tile "${destTile.name}". Paid $${taxCost} to the bank.`;
+    description += ` Landed on tax tile "${destTile.name}". Paid ৳${taxCost} to the bank.`;
   }
 
   // Check if tile is a purchasable property (STREET, RAILROAD, UTILITY)
@@ -115,7 +115,7 @@ export function executeMovement(
     if (!propState || !propState.ownerId) {
       // Unowned
       nextAction = 'BUY_PROPERTY';
-      description += ` Landed on unowned property "${destTile.name}". Can buy for $${destTile.price}.`;
+      description += ` Landed on unowned property "${destTile.name}". Can buy for ৳${destTile.price}.`;
     } else if (propState.ownerId !== playerId && !propState.isMortgaged) {
       // Owned by someone else, and not mortgaged -> Rent is due
       nextAction = 'PAY_RENT';
@@ -125,6 +125,17 @@ export function executeMovement(
       if (destTile.type === 'STREET') {
         const houses = propState.houses;
         rentAmount = destTile.rent ? destTile.rent[houses] : 0;
+        
+        if (houses === 0 && newState.settings.doubleRentOnCompleteSet) {
+          const groupTiles = boardTiles.filter(t => t.group === destTile.group);
+          const ownsFullSet = groupTiles.every(t => {
+            const p = newState.properties[t.index];
+            return p && p.ownerId === propState.ownerId;
+          });
+          if (ownsFullSet) {
+            rentAmount *= 2;
+          }
+        }
       } else if (destTile.type === 'RAILROAD') {
         // Count owned railroads
         const ownerRailroads = Object.values(newState.properties).filter(
@@ -141,7 +152,7 @@ export function executeMovement(
       }
 
       if (rentAmount && rentAmount > 0) {
-        description += ` Landed on "${destTile.name}" owned by ${newState.players[propState.ownerId]?.name || 'another player'}. Rent of $${rentAmount} is due.`;
+        description += ` Landed on "${destTile.name}" owned by ${newState.players[propState.ownerId]?.name || 'another player'}. Rent of ৳${rentAmount} is due.`;
       }
     } else if (propState.ownerId === playerId) {
       description += ` Landed on their own property "${destTile.name}".`;

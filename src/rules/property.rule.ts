@@ -39,7 +39,7 @@ export function canBuyProperty(
   // 5. Check balance
   const cost = tile.price || 0;
   if (player.balance < cost) {
-    return { valid: false, error: `Insufficient balance. Property costs $${cost}, you have $${player.balance}.` };
+    return { valid: false, error: `Insufficient balance. Property costs ৳${cost}, you have ৳${player.balance}.` };
   }
 
   return { valid: true };
@@ -70,7 +70,7 @@ export function buyProperty(
     houses: 0
   };
 
-  const description = `${player.name} bought "${tile.name}" for $${cost}. Remaining balance: $${player.balance}.`;
+  const description = `${player.name} bought "${tile.name}" for ৳${cost}. Remaining balance: ৳${player.balance}.`;
   return { newState, description };
 }
 
@@ -116,7 +116,7 @@ export function mortgageProperty(
   prop.isMortgaged = true;
   player.balance += mortgageVal;
 
-  const description = `${player.name} mortgaged "${tile.name}" and received $${mortgageVal}. Current balance: $${player.balance}.`;
+  const description = `${player.name} mortgaged "${tile.name}" and received ৳${mortgageVal}. Current balance: ৳${player.balance}.`;
   return { newState, description };
 }
 
@@ -146,7 +146,7 @@ export function canUnmortgageProperty(
   if (player.balance < costToUnmortgage) {
     return {
       valid: false,
-      error: `Insufficient balance. Unmortgage costs $${costToUnmortgage} (mortgage value + 10%), you have $${player.balance}.`
+      error: `Insufficient balance. Unmortgage costs ৳${costToUnmortgage} (mortgage value + 10%), you have ৳${player.balance}.`
     };
   }
 
@@ -173,7 +173,7 @@ export function unmortgageProperty(
   prop.isMortgaged = false;
   player.balance -= costToUnmortgage;
 
-  const description = `${player.name} unmortgaged "${tile.name}" for $${costToUnmortgage}. Remaining balance: $${player.balance}.`;
+  const description = `${player.name} unmortgaged "${tile.name}" for ৳${costToUnmortgage}. Remaining balance: ৳${player.balance}.`;
   return { newState, description };
 }
 
@@ -197,7 +197,7 @@ export function payRent(
   renter.balance -= rentAmount;
   owner.balance += rentAmount;
 
-  let description = `${renter.name} paid rent of $${rentAmount} to ${owner.name}.`;
+  let description = `${renter.name} paid rent of ৳${rentAmount} to ${owner.name}.`;
 
   if (renter.balance < 0) {
     newState.turnStatus = 'BANKRUPTCY_PENDING';

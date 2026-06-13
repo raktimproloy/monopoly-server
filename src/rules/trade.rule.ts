@@ -19,10 +19,10 @@ export function canOfferTrade(
 
   // 1. Verify Cash balances
   if (sender.balance < offer.offerCash) {
-    return { valid: false, error: `${sender.name} does not have $${offer.offerCash} to trade.` };
+    return { valid: false, error: `${sender.name} does not have ৳${offer.offerCash} to trade.` };
   }
   if (receiver.balance < offer.requestCash) {
-    return { valid: false, error: `${receiver.name} does not have $${offer.requestCash} to trade.` };
+    return { valid: false, error: `${receiver.name} does not have ৳${offer.requestCash} to trade.` };
   }
 
   // 2. Verify Sender properties
@@ -81,9 +81,17 @@ export function executeTrade(
     }
   }
 
+  // Check if this trade resolved a bankruptcy pending status
+  if (newState.turnStatus === 'BANKRUPTCY_PENDING') {
+    const activePlayer = newState.players[newState.currentTurnPlayerId];
+    if (activePlayer && activePlayer.balance >= 0) {
+      newState.turnStatus = 'MUST_ACT_OR_END';
+    }
+  }
+
   const description = `Trade complete! ${sender.name} and ${receiver.name} swapped assets. ` +
-    `Sender gave: $${offer.offerCash} & properties [${offer.offerPropertyIndexes.join(', ')}]. ` +
-    `Receiver gave: $${offer.requestCash} & properties [${offer.requestPropertyIndexes.join(', ')}].`;
+    `Sender gave: ৳${offer.offerCash} & properties [${offer.offerPropertyIndexes.join(', ')}]. ` +
+    `Receiver gave: ৳${offer.requestCash} & properties [${offer.requestPropertyIndexes.join(', ')}].`;
 
   return { newState, description };
 }

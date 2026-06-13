@@ -73,6 +73,24 @@ export class GameController {
     }
   }
 
+  private activeAuctionsTimeout: Record<string, NodeJS.Timeout> = {};
+
+  private startAuctionTimer(roomId: string, endTime: number) {
+    if (this.activeAuctionsTimeout[roomId]) {
+      clearTimeout(this.activeAuctionsTimeout[roomId]);
+    }
+    const delay = endTime - Date.now();
+    this.activeAuctionsTimeout[roomId] = setTimeout(async () => {
+      try {
+        const { state, log } = await this.gameService.resolveAuction(roomId);
+        this.io.to(roomId).emit('state_updated', { state, log });
+        delete this.activeAuctionsTimeout[roomId];
+      } catch (err) {
+        logger.error(`Error resolving auction for room ${roomId}`, err);
+      }
+    }, delay > 0 ? delay : 0);
+  }
+
   /**
    * Updates the last activity timestamp for a room.
    */
@@ -108,7 +126,7 @@ export class GameController {
         socket.to(roomId).emit('player_joined', { userId, name, avatar });
         
         // Broadcast full state update to update existing player screens in lobby
-        this.io.to(roomId).emit('state_updated', { state, log: `${name} entered the lobby.` });
+        this.io.to(roomId).emit('state_updated', { state, log: `[SYS] ${name} entered the lobby.` });
 
         // Send current game state and dynamic board configuration to newly connected client
         const boardTemplate = await this.gameService.loadBoardTemplate();
@@ -162,7 +180,7 @@ export class GameController {
         const updatedState = await this.gameService.updateSettings(roomId, settings, playerId);
         this.io.to(roomId).emit('state_updated', {
           state: updatedState,
-          log: `Lobby rules updated.`
+          log: `[SYS] Lobby rules updated.`
         });
       } catch (err: any) {
         logger.error(`Error in update_settings for room ${roomId}`, err);
@@ -183,7 +201,7 @@ export class GameController {
         const updatedState = await this.gameService.startGame(roomId, playerId);
         this.io.to(roomId).emit('state_updated', {
           state: updatedState,
-          log: `Tactical matrix compiled! Match started.`
+          log: `[SYS] Tactical matrix compiled! Match started.`
         });
       } catch (err: any) {
         logger.error(`Error in start_game for room ${roomId}`, err);
@@ -378,12 +396,33 @@ export class GameController {
         const { state: updatedState, log } = await this.gameService.auctionProperty(roomId, playerId, tileIndex);
 
         this.io.to(roomId).emit('state_updated', { state: updatedState, log });
+        this.startAuctionTimer(roomId, (updatedState as any).activeAuction.endTime);
       } catch (err: any) {
         logger.error(`Error in auction_property for room ${roomId}`, err);
         socket.emit('error_message', err.message || 'Validation error');
       }
     });
 
+    // --- 5.5 Place Bid Event ---
+    socket.on('place_bid', async (payload: any) => {
+      const roomId = this.getSocketRoom(socket);
+      if (!roomId) return socket.emit('error_message', 'Not in a game room');
+
+      try {
+        const { playerId, amountToAdd } = payload;
+        
+        const identityCheck = antiCheatGuard.verifySocketIdentity(socket, playerId);
+        if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
+
+        const { state: updatedState, log } = await this.gameService.placeBid(roomId, playerId, amountToAdd);
+
+        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
+        this.startAuctionTimer(roomId, (updatedState as any).activeAuction.endTime);
+      } catch (err: any) {
+        logger.error(`Error in place_bid for room ${roomId}`, err);
+        socket.emit('error_message', err.message || 'Validation error');
+      }
+    });
     // --- 6. Propose Trade Event ---
     socket.on('propose_trade', async (payload: any) => {
       const roomId = this.getSocketRoom(socket);
@@ -427,7 +466,7 @@ export class GameController {
               const latestState = await this.gameService.getRoomState(roomId);
               const senderName = latestState?.players[offer.senderId]?.name || 'Player';
               const receiverName = latestState?.players[offer.receiverId]?.name || 'Player';
-              const log = `Trade proposal between ${senderName} and ${receiverName} has expired.`;
+              const log = `[TRADE] Proposal between ${senderName} and ${receiverName} expired.`;
               
               logger.info(`Trade ${tradeId} expired in room ${roomId}`);
               this.io.to(roomId).emit('trade_declined', { tradeId, log });
@@ -473,7 +512,7 @@ export class GameController {
           const state = await this.gameService.getRoomState(roomId);
           const senderName = state?.players[offer.senderId]?.name || 'Player';
           const receiverName = state?.players[offer.receiverId]?.name || 'Player';
-          const log = `${receiverName} declined the trade offer from ${senderName}.`;
+          const log = `[TRADE] ${receiverName} declined the trade offer from ${senderName}.`;
           
           logger.info(`Trade ${tradeId} declined: ${log}`);
           this.io.to(roomId).emit('trade_declined', { tradeId, log });

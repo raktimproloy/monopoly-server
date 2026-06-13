@@ -199,7 +199,7 @@ export class ActionService {
     const player = state.players[playerId];
     if (!player) throw new Error(`Player ${playerId} not found.`);
     if (!player.inJail) throw new Error(`Player ${playerId} is not in jail.`);
-    if (player.balance < 50) throw new Error(`Insufficient funds. Paying jail fine costs $50, you have $${player.balance}.`);
+    if (player.balance < 50) throw new Error(`Insufficient funds. Paying jail fine costs ৳50, you have ৳${player.balance}.`);
 
     const newState = JSON.parse(JSON.stringify(state)) as GameState;
     const pState = newState.players[playerId];
@@ -209,7 +209,7 @@ export class ActionService {
     pState.balance -= 50;
     newState.turnStatus = 'MUST_ROLL';
 
-    const description = `${pState.name} paid $50 fine and is released from Jail.`;
+    const description = `${pState.name} paid ৳50 fine and is released from Jail.`;
 
     const savedState = await this.roomService.updateRoomState(
       roomId,

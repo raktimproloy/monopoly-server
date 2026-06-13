@@ -35,7 +35,7 @@ export class PropertyService {
           isMortgaged: false
         };
         
-        const description = `[DEV] ${player.name} remotely acquired ${tile.name} for $${tile.price}.`;
+        const description = `[DEV] ${player.name} remotely acquired ${tile.name} for ৳${tile.price}.`;
         const savedState = await this.roomService.updateRoomState(
           roomId, newState, playerId, 'BUY_PROPERTY', { tileIndex }, description
         );
@@ -155,7 +155,7 @@ export class PropertyService {
     player.balance -= cost;
     prop.houses = currentHouses + 1;
 
-    const description = `${player.name} built a ${prop.houses === 5 ? 'hotel' : 'house'} on ${tile.name} for $${cost}.`;
+    const description = `[UPGRADE] ${player.name} built a ${prop.houses === 5 ? 'hotel' : 'house'} on ${tile.name} for ৳${cost}.`;
 
     const savedState = await this.roomService.updateRoomState(
       roomId, newState, playerId, 'BUILD_HOUSE', { tileIndex }, description
@@ -194,7 +194,11 @@ export class PropertyService {
     player.balance += refund;
     prop.houses = currentHouses - 1;
 
-    const description = `${player.name} broke a ${currentHouses === 5 ? 'hotel' : 'house'} from ${tile.name} for $${refund}.`;
+    const description = `[DOWNGRADE] ${player.name} broke a ${currentHouses === 5 ? 'hotel' : 'house'} from ${tile.name} for ৳${refund}.`;
+
+    if (player.balance >= 0 && newState.turnStatus === 'BANKRUPTCY_PENDING' && newState.currentTurnPlayerId === playerId) {
+      newState.turnStatus = 'MUST_ACT_OR_END';
+    }
 
     const savedState = await this.roomService.updateRoomState(
       roomId, newState, playerId, 'SELL_HOUSE', { tileIndex }, description
@@ -233,7 +237,11 @@ export class PropertyService {
 
     delete newState.properties[tileIndex];
 
-    const description = `${player.name} liquidated ${tile.name} to the bank for $${refundAmount}.`;
+    const description = `[LIQUIDATE] ${player.name} liquidated ${tile.name} to the bank for ৳${refundAmount}.`;
+
+    if (player.balance >= 0 && newState.turnStatus === 'BANKRUPTCY_PENDING' && newState.currentTurnPlayerId === playerId) {
+      newState.turnStatus = 'MUST_ACT_OR_END';
+    }
 
     const savedState = await this.roomService.updateRoomState(
       roomId, newState, playerId, 'SELL_PROPERTY', { tileIndex }, description
@@ -249,14 +257,127 @@ export class PropertyService {
     if (!state) throw new Error(`Game room ${roomId} not found.`);
 
     const { tiles } = await this.roomService.loadBoardTemplate();
-    const newState = JSON.parse(JSON.stringify(state)) as GameState;
+    const newState = JSON.parse(JSON.stringify(state)) as GameState & { activeAuction?: any, previousGameStatus?: string };
     const tile = tiles.find(t => t.index === tileIndex);
     const player = newState.players[playerId];
 
-    const description = `${player.name} declined to buy ${tile?.name}. The property has been sent to AUCTION!`;
+    if (!tile) throw new Error('Invalid property for auction.');
+    
+    const prop = newState.properties[tileIndex];
+    let startPrice = tile.price || 0;
+    let sellerId: string | null = null;
+
+    if (prop && prop.ownerId === playerId) {
+      if (prop.houses > 0) throw new Error('Cannot auction property with houses.');
+      startPrice = prop.isMortgaged ? Math.floor(startPrice * 0.4) : Math.floor(startPrice * 0.7);
+      sellerId = playerId;
+    } else if (!prop || !prop.ownerId) {
+      startPrice = tile.price || 0;
+    } else {
+      throw new Error('You cannot auction a property you do not own.');
+    }
+
+    newState.activeAuction = {
+      propertyIndex: tileIndex,
+      highestBidderId: null,
+      currentBid: startPrice,
+      endTime: Date.now() + 10000,
+      sellerId: sellerId,
+    };
+    
+    newState.previousGameStatus = newState.gameStatus;
+    newState.gameStatus = 'AUCTION';
+
+    const description = `[AUCTION] ${player.name} initiated auction for ${tile.name}. Base: ৳${startPrice}.`;
 
     const savedState = await this.roomService.updateRoomState(
       roomId, newState, playerId, 'AUCTION_PROPERTY', { tileIndex }, description
+    );
+    return { state: savedState, log: description };
+  }
+
+  async placeBid(roomId: string, playerId: string, amountToAdd: number): Promise<{ state: GameState; log: string }> {
+    const state = await this.roomService.getRoomState(roomId);
+    if (!state) throw new Error(`Game room ${roomId} not found.`);
+
+    const newState = JSON.parse(JSON.stringify(state)) as GameState & { activeAuction?: any };
+    const auction = newState.activeAuction;
+    if (!auction) throw new Error('No active auction.');
+
+    if (Date.now() > auction.endTime) {
+      throw new Error('Auction has already ended.');
+    }
+    if (auction.sellerId === playerId) {
+      throw new Error('You cannot bid on your own property.');
+    }
+    if (amountToAdd !== 10 && amountToAdd !== 100) {
+      throw new Error('Invalid bid amount.');
+    }
+
+    const player = newState.players[playerId];
+    const newBid = auction.currentBid + amountToAdd;
+
+    if (player.balance < newBid) {
+      throw new Error(`Insufficient funds to bid ৳${newBid}.`);
+    }
+
+    auction.highestBidderId = playerId;
+    auction.currentBid = newBid;
+    auction.endTime = Date.now() + 10000; // Reset to 10 seconds
+
+    const description = `[AUCTION] ${player.name} bid ৳${newBid}.`;
+
+    const savedState = await this.roomService.updateRoomState(
+      roomId, newState, playerId, 'PLACE_BID', { newBid }, description
+    );
+    return { state: savedState, log: description };
+  }
+
+  async resolveAuction(roomId: string): Promise<{ state: GameState; log: string }> {
+    const state = await this.roomService.getRoomState(roomId);
+    if (!state) throw new Error(`Game room ${roomId} not found.`);
+
+    const newState = JSON.parse(JSON.stringify(state)) as GameState & { activeAuction?: any, previousGameStatus?: string };
+    const auction = newState.activeAuction;
+    if (!auction) throw new Error('No active auction to resolve.');
+
+    const { propertyIndex, highestBidderId, currentBid, sellerId } = auction;
+    const { tiles } = await this.roomService.loadBoardTemplate();
+    const tile = tiles.find(t => t.index === propertyIndex);
+    
+    let description = '';
+
+    if (highestBidderId) {
+      const winner = newState.players[highestBidderId];
+      winner.balance -= currentBid;
+      
+      if (sellerId) {
+        const seller = newState.players[sellerId];
+        seller.balance += currentBid;
+        const prop = newState.properties[propertyIndex];
+        if (prop) {
+            prop.ownerId = highestBidderId;
+        }
+        description = `[AUCTION] ${winner.name} secured ${tile?.name} with a bid of ৳${currentBid}, paying ${seller.name}.`;
+      } else {
+        newState.properties[propertyIndex] = {
+          tileIndex: propertyIndex,
+          ownerId: highestBidderId,
+          houses: 0,
+          isMortgaged: false
+        };
+        description = `[AUCTION] ${winner.name} secured ${tile?.name} for ৳${currentBid}.`;
+      }
+    } else {
+      description = `[AUCTION] Terminated. No valid bids for ${tile?.name}.`;
+    }
+
+    newState.gameStatus = newState.previousGameStatus || 'ACTIVE';
+    delete newState.activeAuction;
+    delete newState.previousGameStatus;
+
+    const savedState = await this.roomService.updateRoomState(
+      roomId, newState, 'SYSTEM', 'RESOLVE_AUCTION', { propertyIndex }, description
     );
     return { state: savedState, log: description };
   }
