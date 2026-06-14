@@ -111,6 +111,14 @@ export class RoomService {
         [templateName]
       );
       if (rows.length > 0) {
+        if (templateName === 'Standard Monopoly') {
+          // Forcefully sync the DB with the updated Bengali tiles
+          await db.query(
+            'UPDATE board_templates SET board_data = $1 WHERE id = $2',
+            [{ tiles: STANDARD_TILES_FALLBACK }, rows[0].id]
+          );
+          return { id: rows[0].id, tiles: STANDARD_TILES_FALLBACK };
+        }
         return {
           id: rows[0].id,
           tiles: rows[0].board_data.tiles as BoardTile[]
@@ -217,12 +225,20 @@ export class RoomService {
       throw new Error('Game session has already started in this room.');
     }
 
-    // Verify avatar color signature is not already taken by another player node
-    const isAvatarTaken = Object.values(newState.players).some(
-      (p) => p.id !== player.id && p.avatar.toLowerCase() === player.avatar.toLowerCase()
-    );
-    if (isAvatarTaken) {
-      throw new Error('This tactical signature (color) is already assigned to another node.');
+    // Ensure avatar color signature is unique
+    const takenColors = Object.values(newState.players)
+      .filter((p) => p.id !== player.id)
+      .map(p => p.avatar.toLowerCase());
+
+    if (takenColors.includes(player.avatar.toLowerCase())) {
+      const AVATAR_COLORS = ['#8BA4F9', '#D8B4F8', '#F98BA4', '#A4F98B'];
+      const available = AVATAR_COLORS.find(col => !takenColors.includes(col.toLowerCase()));
+      if (available) {
+        player.avatar = available;
+      } else {
+        // Fallback to random color if standard ones are taken
+        player.avatar = '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0');
+      }
     }
 
     // Add or update player details (allows edit of callsign and appearance!)
@@ -249,7 +265,7 @@ export class RoomService {
       player.id,
       'JOIN_LOBBY',
       { name: player.name, avatar: player.avatar },
-      `[SYS] ${player.name} connected to lobby slot.`
+      `{player.name} লবিতে যুক্ত হয়েছেন।`
     );
 
     return resultState;
@@ -276,13 +292,15 @@ export class RoomService {
       newState.players[pId].balance = settings.startingCash;
     });
 
+    const log = `গেমের নিয়ম পরিবর্তন করা হয়েছে: প্রারম্ভিক টাকা ৳${settings.startingCash}, ডাবল ভাড়া: ${settings.doubleRentOnCompleteSet ? 'হ্যাঁ' : 'না'}, ফ্রি পার্কিং পুল: ${settings.freeParkingCashPool ? 'হ্যাঁ' : 'না'}।`;
+
     const resultState = await this.updateRoomState(
       roomId,
       newState,
       playerId,
       'UPDATE_SETTINGS',
       settings,
-      `[SYS] Match rule configurations updated: Starting Cash: ৳${settings.startingCash}, Double Rent: ${settings.doubleRentOnCompleteSet}, Free Parking Pool: ${settings.freeParkingCashPool}`
+      log
     );
 
     return resultState;
@@ -328,7 +346,7 @@ export class RoomService {
       playerId,
       'START_GAME',
       {},
-      `[SYS] Match initiated! First turn: ${newState.players[newState.currentTurnPlayerId].name}`
+      `${newState.players[newState.currentTurnPlayerId].name}-এর চাল দিয়ে খেলা শুরু হলো।`
     );
 
     return resultState;
@@ -440,9 +458,9 @@ export class RoomService {
       const savedState = await this.updateRoomState(
         roomId, newState, playerId, 'PLAYER_LEFT',
         { playerId },
-        `[SYS] ${player.name} disconnected from the lobby.`
+        `${player.name} লবি থেকে বের হয়ে গেছেন।`
       );
-      return { state: savedState, log: `[SYS] ${player.name} disconnected from the lobby.`, roomDeleted: false };
+      return { state: savedState, log: `${player.name} লবি থেকে বের হয়ে গেছেন।`, roomDeleted: false };
     }
 
     if (newState.gameStatus === 'ACTIVE') {
@@ -472,7 +490,7 @@ export class RoomService {
 
       // Check if game is finished (only 1 non-bankrupt player left)
       const activePlayers = Object.values(newState.players).filter(p => !p.isBankrupt);
-      let description = `[SYS] ${player.name} disconnected and forfeited. Assets returned to bank.`;
+      let description = `${player.name} গেম থেকে বের হয়ে গেছেন এবং তার সম্পত্তি বাজেয়াপ্ত করা হয়েছে।`;
       if (activePlayers.length <= 1) {
         newState.gameStatus = 'FINISHED';
         newState.winnerId = activePlayers[0]?.id || null;

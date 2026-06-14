@@ -1,4 +1,5 @@
 import { GameState, BoardTile, PropertyState } from '../../../shared/types';
+import { generateLog } from '../utils/logGenerator';
 
 /**
  * Validates if a player can buy a specific property.
@@ -70,7 +71,12 @@ export function buyProperty(
     houses: 0
   };
 
-  const description = `${player.name} bought "${tile.name}" for ৳${cost}. Remaining balance: ৳${player.balance}.`;
+  const description = generateLog('boughtProperty', {
+    playerName: player.name,
+    tileName: tile.name,
+    cost,
+    balance: player.balance
+  });
   return { newState, description };
 }
 
@@ -116,7 +122,12 @@ export function mortgageProperty(
   prop.isMortgaged = true;
   player.balance += mortgageVal;
 
-  const description = `${player.name} mortgaged "${tile.name}" and received ৳${mortgageVal}. Current balance: ৳${player.balance}.`;
+  const description = generateLog('mortgagedProperty', {
+    playerName: player.name,
+    tileName: tile.name,
+    mortgageVal,
+    balance: player.balance
+  });
   return { newState, description };
 }
 
@@ -173,7 +184,12 @@ export function unmortgageProperty(
   prop.isMortgaged = false;
   player.balance -= costToUnmortgage;
 
-  const description = `${player.name} unmortgaged "${tile.name}" for ৳${costToUnmortgage}. Remaining balance: ৳${player.balance}.`;
+  const description = generateLog('unmortgagedProperty', {
+    playerName: player.name,
+    tileName: tile.name,
+    cost: costToUnmortgage,
+    balance: player.balance
+  });
   return { newState, description };
 }
 
@@ -197,7 +213,11 @@ export function payRent(
   renter.balance -= rentAmount;
   owner.balance += rentAmount;
 
-  let description = `${renter.name} paid rent of ৳${rentAmount} to ${owner.name}.`;
+  let description = generateLog('paidRent', {
+    payerName: renter.name,
+    rentAmount,
+    ownerName: owner.name
+  });
 
   if (renter.balance < 0) {
     newState.turnStatus = 'BANKRUPTCY_PENDING';

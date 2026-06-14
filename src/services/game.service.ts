@@ -2,6 +2,7 @@ import { RoomService } from './room.service';
 import { PropertyService } from './property.service';
 import { TradeService } from './trade.service';
 import { ActionService } from './action.service';
+import { PardonService } from './pardon.service';
 import { GameState, TradeOfferPayload, BoardTile } from '../../../shared/types';
 
 export class GameService {
@@ -9,12 +10,14 @@ export class GameService {
   private propertyService: PropertyService;
   private tradeService: TradeService;
   private actionService: ActionService;
+  private pardonService: PardonService;
 
   constructor() {
     this.roomService = new RoomService();
     this.propertyService = new PropertyService(this.roomService);
     this.tradeService = new TradeService(this.roomService);
     this.actionService = new ActionService(this.roomService);
+    this.pardonService = new PardonService(this.roomService);
   }
 
   /**
@@ -67,17 +70,10 @@ export class GameService {
   }
 
   /**
-   * Delegates DEV teleport to ActionService.
+   * Delegates resolving a drawn card to ActionService.
    */
-  async devTeleport(roomId: string, playerId: string, targetIndex: number): Promise<{ state: GameState; log: string }> {
-    return this.actionService.devTeleport(roomId, playerId, targetIndex);
-  }
-
-  /**
-   * Delegates DEV force manual roll to ActionService.
-   */
-  async devRollDice(roomId: string, playerId: string, d1: number, d2: number): Promise<{ state: GameState; log: string }> {
-    return this.actionService.devRollDice(roomId, playerId, d1, d2);
+  async resolveCard(roomId: string, playerId: string): Promise<{ state: GameState; log: string }> {
+    return this.actionService.resolveCard(roomId, playerId);
   }
 
   /**
@@ -169,6 +165,20 @@ export class GameService {
    */
   async payJailFine(roomId: string, playerId: string): Promise<{ state: GameState; log: string }> {
     return this.actionService.payJailFine(roomId, playerId);
+  }
+
+  /**
+   * Delegates selling a pardon card to the bank.
+   */
+  async sellPardonCardToBank(roomId: string, playerId: string): Promise<{ state: GameState; log: string }> {
+    return this.pardonService.sellToBank(roomId, playerId);
+  }
+
+  /**
+   * Delegates using a pardon card to escape jail.
+   */
+  async usePardonCardToEscape(roomId: string, playerId: string): Promise<{ state: GameState; log: string }> {
+    return this.pardonService.useToEscapeJail(roomId, playerId);
   }
 
   /**
