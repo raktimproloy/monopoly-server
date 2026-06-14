@@ -540,6 +540,34 @@ export class GameController {
       }
     });
 
+    // --- 5.8 Dev Add Funds Event ---
+    socket.on('dev_add_funds', async (payload: any) => {
+      const roomId = this.getSocketRoom(socket);
+      if (!roomId) return socket.emit('error_message', 'Not in a game room');
+
+      try {
+        const { playerId, amount } = payload;
+        if (!playerId || typeof amount !== 'number') {
+          return socket.emit('error_message', 'Invalid payload for dev_add_funds');
+        }
+
+        const identityCheck = antiCheatGuard.verifySocketIdentity(socket, playerId);
+        if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
+
+        const state = await this.gameService.getRoomState(roomId);
+        if (!state) return socket.emit('error_message', 'Game session not found.');
+
+        const turnCheck = antiCheatGuard.verifyTurn(state, playerId);
+        if (!turnCheck.valid) return socket.emit('error_message', turnCheck.error);
+
+        const { state: updatedState, log } = await this.gameService.devAddFunds(roomId, playerId, amount);
+        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
+      } catch (err: any) {
+        logger.error(`Error in dev_add_funds for room ${roomId}`, err);
+        socket.emit('error_message', err.message || 'Validation error');
+      }
+    });
+
     // --- 5.7 Dev Force Roll Event ---
     socket.on('dev_roll_dice', async (payload: any) => {
       const roomId = this.getSocketRoom(socket);

@@ -59,7 +59,7 @@ export const STANDARD_TILES_FALLBACK: BoardTile[] = [
   { index: 1, name: "দিনাজপুর (রংপুর)", type: "STREET", price: 60, rent: [2, 10, 30, 90, 160, 250], mortgageValue: 30, houseCost: 50, group: "Brown" },
   { index: 2, name: "গুপ্তধন", type: "CHEST" },
   { index: 3, name: "রংপুর (রংপুর)", type: "STREET", price: 60, rent: [4, 20, 60, 180, 320, 450], mortgageValue: 30, houseCost: 50, group: "Brown" },
-  { index: 4, name: "আয়কর", type: "TAX", price: 200 },
+  { index: 4, name: "আয়কর\n(১০%)", type: "TAX", price: 0 },
   { index: 5, name: "বরিশাল রেল", type: "RAILROAD", price: 200, rent: [25, 50, 100, 200], mortgageValue: 100 },
   { index: 6, name: "বরগুনা (বরিশাল)", type: "STREET", price: 100, rent: [6, 30, 90, 270, 400, 550], mortgageValue: 50, houseCost: 50, group: "Light Blue" },
   { index: 7, name: "ভাগ্য পরীক্ষা", type: "CHANCE" },
@@ -240,7 +240,7 @@ export class RoomService {
         player.avatar = available;
       } else {
         // Fallback to random color if standard ones are taken
-        player.avatar = '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0');
+        player.avatar = '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
       }
     }
 

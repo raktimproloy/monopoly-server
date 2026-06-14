@@ -53,6 +53,33 @@ export class ActionService {
   }
 
   /**
+   * Dev-only feature: Add funds to a player's balance.
+   */
+  async devAddFunds(roomId: string, playerId: string, amount: number): Promise<{ state: GameState; log: string }> {
+    const state = await this.roomService.getRoomState(roomId);
+    if (!state) throw new Error(`Game room ${roomId} not found.`);
+
+    const player = state.players[playerId];
+    if (!player) throw new Error(`Player ${playerId} not found.`);
+
+    const newState = JSON.parse(JSON.stringify(state)) as GameState;
+    newState.players[playerId].balance += amount;
+
+    const description = `🔧 DEV: ${player.name}-কে ৳${amount} প্রদান করা হয়েছে।`;
+
+    const savedState = await this.roomService.updateRoomState(
+      roomId,
+      newState,
+      playerId,
+      'DEV_ADD_FUNDS',
+      { amount },
+      description
+    );
+
+    return { state: savedState, log: description };
+  }
+
+  /**
    * Dev-only feature: Teleports player to a specific tile and simulates landing.
    */
   async devTeleport(roomId: string, playerId: string, targetIndex: number): Promise<{ state: GameState; log: string }> {
@@ -153,12 +180,13 @@ export class ActionService {
     }
 
     const newState = JSON.parse(JSON.stringify(state)) as GameState;
+    let description = '';
 
     // Check if the player rolled doubles and wasn't sent to jail (doubleRollCount > 0)
     if (newState.dice && newState.dice[0] === newState.dice[1] && newState.doubleRollCount > 0) {
       newState.turnStatus = 'MUST_ROLL';
       newState.dice = [0, 0]; // reset dice visually
-      const description = `${player.name} ডাবল পাওয়ায় আবার চাল দেবেন!`;
+      description = `${player.name} ডাবল পাওয়ায় আবার চাল দেবেন!`;
       
       const savedState = await this.roomService.updateRoomState(
         roomId,

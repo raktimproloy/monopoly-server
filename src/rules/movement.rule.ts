@@ -40,7 +40,7 @@ export function executeMovement(
     if (isDouble) {
       player.inJail = false;
       player.jailTurns = 0;
-      description += ` ডাবল পাওয়ায় জেল থেকে মুক্তি পেয়েছেন!`;
+      description += ` ➡️ ডাবলে জেল থেকে মুক্তি!`;
     } else {
       player.jailTurns += 1;
       if (player.jailTurns >= 3) {
@@ -48,9 +48,9 @@ export function executeMovement(
         player.inJail = false;
         player.jailTurns = 0;
         player.balance -= 50;
-      description += ` পরপর ৩ বার ডাবল পেতে ব্যর্থ হয়েছেন। ৳50 জরিমানা দিয়ে জেল থেকে ছাড়া পেলেন।`;
+      description += ` ➡️ জেল জরিমানা ৳50।`;
       } else {
-        description += ` এখনও জেলে আছেন (চাল ${player.jailTurns}/3)।`;
+        description += ` ➡️ জেলে আছেন (${player.jailTurns}/3)।`;
         newState.turnStatus = 'MUST_ACT_OR_END';
         return { newState, description, nextAction: 'NONE' };
       }
@@ -67,7 +67,7 @@ export function executeMovement(
       player.position = 10; // Jail position index
       newState.doubleRollCount = 0;
       newState.turnStatus = 'MUST_ACT_OR_END';
-      description += ` পরপর ৩ বার ডাবল পাওয়ায় সোজা জেলে পাঠানো হয়েছে!`;
+      description += ` ➡️ ৩ ডাবলে সোজা জেলে!`;
       return { newState, description, nextAction: 'NONE' };
     }
   } else {
@@ -84,7 +84,7 @@ export function executeMovement(
   if (newPosition < oldPosition) {
     if (newPosition === 0) {
       player.balance += 300;
-      description += ` এবং ঠিক 'শুরু' (GO) ঘরে এসে থেমেছেন, তাই ৳300 বোনাস পেয়েছেন।`;
+      description += ` ➡️ GO তে থেমে ৳300 বোনাস!`;
     } else {
       player.balance += 200;
       description += generateLog('goCollected', { oldPos: oldPosition, newPos: newPosition });
@@ -104,13 +104,19 @@ export function executeMovement(
     player.jailTurns = 0;
     player.position = 10; // Jail space
     newState.doubleRollCount = 0;
-    description += ` সোজা জেলে পাঠানো হয়েছে!`;
+    description += ` ➡️ সোজা জেলে!`;
     newState.turnStatus = 'MUST_ACT_OR_END';
     return { newState, description, nextAction: 'NONE' };
   }
 
   if (destTile.type === 'TAX') {
-    const taxCost = destTile.price || 100;
+    let taxCost = destTile.price || 100;
+    
+    // Income Tax (Index 4) is 10% of total money
+    if (newPosition === 4) {
+      taxCost = Math.floor(player.balance * 0.10);
+    }
+    
     player.balance -= taxCost;
     if (newState.settings.freeParkingCashPool) {
       newState.freeParkingPool = (newState.freeParkingPool || 0) + taxCost;
@@ -120,10 +126,10 @@ export function executeMovement(
 
   if (destTile.type === 'FREE_PARKING') {
     player.skipTurns = (player.skipTurns || 0) + 1;
-    description += ` অবসরে গিয়েছেন! তিনি পরের দানটি দিতে পারবেন না।`;
+    description += ` ➡️ ফ্রি পার্কিং!`;
     if (newState.settings.freeParkingCashPool && (newState.freeParkingPool || 0) > 0) {
       player.balance += (newState.freeParkingPool || 0);
-      description += ` এবং অবসর তহবিল থেকে ৳${newState.freeParkingPool} পেয়েছেন!`;
+      description += ` (+৳${newState.freeParkingPool})`;
       newState.freeParkingPool = 0;
     }
   }
@@ -143,7 +149,7 @@ export function executeMovement(
       };
       
       // Do NOT apply effects or generate log yet. That happens after OK.
-      description += ` এবং একটি কার্ড তুলেছেন।`;
+      description += ` ➡️ কার্ড তুলেছেন।`;
       nextAction = 'RESOLVE_CARD';
       newState.turnStatus = 'MUST_RESOLVE_CARD';
       return { newState, description, nextAction };

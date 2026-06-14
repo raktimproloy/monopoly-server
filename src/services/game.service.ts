@@ -77,6 +77,13 @@ export class GameService {
   }
 
   /**
+   * Delegates DEV add funds to ActionService.
+   */
+  async devAddFunds(roomId: string, playerId: string, amount: number): Promise<{ state: GameState; log: string }> {
+    return this.actionService.devAddFunds(roomId, playerId, amount);
+  }
+
+  /**
    * Delegates DEV force manual roll to ActionService.
    */
   async devRollDice(roomId: string, playerId: string, d1: number, d2: number): Promise<{ state: GameState; log: string }> {

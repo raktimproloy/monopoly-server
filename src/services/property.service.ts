@@ -66,6 +66,7 @@ export class PropertyService {
   async mortgageProperty(roomId: string, playerId: string, tileIndex: number): Promise<{ state: GameState; log: string }> {
     const state = await this.roomService.getRoomState(roomId);
     if (!state) throw new Error(`Game room ${roomId} not found.`);
+    if (state.currentTurnPlayerId !== playerId) throw new Error('You can only perform this action during your turn.');
 
     const { tiles } = await this.roomService.loadBoardTemplate();
 
@@ -98,6 +99,7 @@ export class PropertyService {
   async unmortgageProperty(roomId: string, playerId: string, tileIndex: number): Promise<{ state: GameState; log: string }> {
     const state = await this.roomService.getRoomState(roomId);
     if (!state) throw new Error(`Game room ${roomId} not found.`);
+    if (state.currentTurnPlayerId !== playerId) throw new Error('You can only perform this action during your turn.');
 
     const { tiles } = await this.roomService.loadBoardTemplate();
 
@@ -126,6 +128,7 @@ export class PropertyService {
   async buildHouse(roomId: string, playerId: string, tileIndex: number): Promise<{ state: GameState; log: string }> {
     const state = await this.roomService.getRoomState(roomId);
     if (!state) throw new Error(`Game room ${roomId} not found.`);
+    if (state.currentTurnPlayerId !== playerId) throw new Error('You can only perform this action during your turn.');
 
     const { tiles } = await this.roomService.loadBoardTemplate();
     const newState = JSON.parse(JSON.stringify(state)) as GameState;
@@ -175,6 +178,7 @@ export class PropertyService {
   async sellHouse(roomId: string, playerId: string, tileIndex: number): Promise<{ state: GameState; log: string }> {
     const state = await this.roomService.getRoomState(roomId);
     if (!state) throw new Error(`Game room ${roomId} not found.`);
+    if (state.currentTurnPlayerId !== playerId) throw new Error('You can only perform this action during your turn.');
 
     const { tiles } = await this.roomService.loadBoardTemplate();
     const newState = JSON.parse(JSON.stringify(state)) as GameState;
@@ -223,6 +227,7 @@ export class PropertyService {
   async sellProperty(roomId: string, playerId: string, tileIndex: number): Promise<{ state: GameState; log: string }> {
     const state = await this.roomService.getRoomState(roomId);
     if (!state) throw new Error(`Game room ${roomId} not found.`);
+    if (state.currentTurnPlayerId !== playerId) throw new Error('You can only perform this action during your turn.');
 
     const { tiles } = await this.roomService.loadBoardTemplate();
     const newState = JSON.parse(JSON.stringify(state)) as GameState;
@@ -270,6 +275,7 @@ export class PropertyService {
   async auctionProperty(roomId: string, playerId: string, tileIndex: number): Promise<{ state: GameState; log: string }> {
     const state = await this.roomService.getRoomState(roomId);
     if (!state) throw new Error(`Game room ${roomId} not found.`);
+    if (state.currentTurnPlayerId !== playerId) throw new Error('You can only perform this action during your turn.');
 
     const { tiles } = await this.roomService.loadBoardTemplate();
     const newState = JSON.parse(JSON.stringify(state)) as GameState & { activeAuction?: any, previousGameStatus?: string };
