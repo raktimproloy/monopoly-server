@@ -126,7 +126,7 @@ export class GameController {
         socket.to(roomId).emit('player_joined', { userId, name, avatar });
         
         // Broadcast full state update to update existing player screens in lobby
-        this.io.to(roomId).emit('state_updated', { state, log: `[SYS] ${name} entered the lobby.` });
+        this.io.to(roomId).emit('state_updated', { state, log: `${name} লবিতে যুক্ত হয়েছেন।` });
 
         // Send current game state and dynamic board configuration to newly connected client
         const boardTemplate = await this.gameService.loadBoardTemplate();
@@ -162,7 +162,7 @@ export class GameController {
           avatar: botAvatar
         });
         
-        this.io.to(roomId).emit('state_updated', { state: updatedState, log: `[SYS] ${botName} added to the lobby.` });
+        this.io.to(roomId).emit('state_updated', { state: updatedState, log: `${botName} লবিতে যুক্ত হয়েছে।` });
       } catch (err: any) {
         logger.error(`Error in add_bot for room ${roomId}`, err);
         socket.emit('error_message', err.message || 'Failed to add bot');
@@ -208,7 +208,7 @@ export class GameController {
         const updatedState = await this.gameService.updateSettings(roomId, settings, playerId);
         this.io.to(roomId).emit('state_updated', {
           state: updatedState,
-          log: `[SYS] Lobby rules updated.`
+          log: `লবির নিয়ম পরিবর্তন করা হয়েছে।`
         });
       } catch (err: any) {
         logger.error(`Error in update_settings for room ${roomId}`, err);
@@ -229,7 +229,7 @@ export class GameController {
         const updatedState = await this.gameService.startGame(roomId, playerId);
         this.io.to(roomId).emit('state_updated', {
           state: updatedState,
-          log: `[SYS] Tactical matrix compiled! Match started.`
+          log: `ম্যাচ শুরু হয়েছে!`
         });
         this.processBotTurn(roomId, updatedState);
       } catch (err: any) {
@@ -497,7 +497,7 @@ export class GameController {
               const latestState = await this.gameService.getRoomState(roomId);
               const senderName = latestState?.players[offer.senderId]?.name || 'Player';
               const receiverName = latestState?.players[offer.receiverId]?.name || 'Player';
-              const log = `[TRADE] Proposal between ${senderName} and ${receiverName} expired.`;
+              const log = `${senderName} এবং ${receiverName}-এর মধ্যকার চুক্তির মেয়াদ শেষ হয়ে গেছে।`;
               
               logger.info(`Trade ${tradeId} expired in room ${roomId}`);
               this.io.to(roomId).emit('trade_declined', { tradeId, log });
@@ -543,7 +543,7 @@ export class GameController {
           const state = await this.gameService.getRoomState(roomId);
           const senderName = state?.players[offer.senderId]?.name || 'Player';
           const receiverName = state?.players[offer.receiverId]?.name || 'Player';
-          const log = `[TRADE] ${receiverName} declined the trade offer from ${senderName}.`;
+          const log = `${receiverName}, ${senderName}-এর প্রস্তাব বাতিল করে দিয়েছেন।`;
           
           logger.info(`Trade ${tradeId} declined: ${log}`);
           this.io.to(roomId).emit('trade_declined', { tradeId, log });
@@ -586,6 +586,43 @@ export class GameController {
       } catch (err: any) {
         logger.error(`Error in end_turn for room ${roomId}`, err);
         socket.emit('error_message', err.message || 'Validation error');
+      }
+    });
+
+    socket.on('resolve_card', async () => {
+      const roomId = this.getSocketRoom(socket);
+      if (!roomId) return socket.emit('error_message', 'Not in a game room');
+      try {
+        const { state: updatedState, log } = await this.gameService.resolveCard(roomId, userId);
+        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
+        this.processBotTurn(roomId, updatedState);
+      } catch (err: any) {
+        logger.error(`Error in resolve_card for room ${roomId}`, err);
+        socket.emit('error_message', err.message || 'Failed to resolve card');
+      }
+    });
+
+    socket.on('sell_pardon_card', async () => {
+      const roomId = this.getSocketRoom(socket);
+      if (!roomId) return socket.emit('error_message', 'Not in a game room');
+      try {
+        const { state: updatedState, log } = await this.gameService.sellPardonCardToBank(roomId, userId);
+        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
+      } catch (err: any) {
+        logger.error(`Error in sell_pardon_card for room ${roomId}`, err);
+        socket.emit('error_message', err.message || 'Failed to sell pardon card');
+      }
+    });
+
+    socket.on('use_pardon_card', async () => {
+      const roomId = this.getSocketRoom(socket);
+      if (!roomId) return socket.emit('error_message', 'Not in a game room');
+      try {
+        const { state: updatedState, log } = await this.gameService.usePardonCardToEscape(roomId, userId);
+        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
+      } catch (err: any) {
+        logger.error(`Error in use_pardon_card for room ${roomId}`, err);
+        socket.emit('error_message', err.message || 'Failed to use pardon card');
       }
     });
 

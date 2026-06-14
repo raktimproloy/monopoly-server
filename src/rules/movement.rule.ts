@@ -4,7 +4,7 @@ import { drawCard, generateLog } from '../utils/logGenerator';
 export interface MovementResult {
   newState: GameState;
   description: string;
-  nextAction: 'BUY_PROPERTY' | 'PAY_RENT' | 'NONE';
+  nextAction: 'BUY_PROPERTY' | 'PAY_RENT' | 'NONE' | 'RESOLVE_CARD';
   rentDuePlayerId?: string;
   rentAmount?: number;
 }
@@ -33,12 +33,14 @@ export function executeMovement(
   // Update dice in state
   newState.dice = diceRoll;
 
+  const wasInJail = player.inJail;
+
   // 1. Jail Logic
-  if (player.inJail) {
+  if (wasInJail) {
     if (isDouble) {
       player.inJail = false;
       player.jailTurns = 0;
-      description += ` and got out of Jail by rolling doubles!`;
+      description += ` ডাবল পাওয়ায় জেল থেকে মুক্তি পেয়েছেন!`;
     } else {
       player.jailTurns += 1;
       if (player.jailTurns >= 3) {
@@ -46,9 +48,9 @@ export function executeMovement(
         player.inJail = false;
         player.jailTurns = 0;
         player.balance -= 50;
-      description += ` failed to roll doubles for 3 turns. Paid ৳50 to get out of Jail.`;
+      description += ` পরপর ৩ বার ডাবল পেতে ব্যর্থ হয়েছেন। ৳50 জরিমানা দিয়ে জেল থেকে ছাড়া পেলেন।`;
       } else {
-        description += ` remains in Jail (turn ${player.jailTurns}/3).`;
+        description += ` এখনও জেলে আছেন (চাল ${player.jailTurns}/3)।`;
         newState.turnStatus = 'MUST_ACT_OR_END';
         return { newState, description, nextAction: 'NONE' };
       }
@@ -56,7 +58,7 @@ export function executeMovement(
   }
 
   // 2. Double Roll Chain Check
-  if (isDouble && !player.inJail) {
+  if (isDouble && !wasInJail) {
     newState.doubleRollCount += 1;
     if (newState.doubleRollCount >= 3) {
       // 3 doubles in a row sends player to jail
@@ -65,7 +67,7 @@ export function executeMovement(
       player.position = 10; // Jail position index
       newState.doubleRollCount = 0;
       newState.turnStatus = 'MUST_ACT_OR_END';
-      description += `. Rolled doubles 3 times in a row! Sent to Jail.`;
+      description += ` পরপর ৩ বার ডাবল পাওয়ায় সোজা জেলে পাঠানো হয়েছে!`;
       return { newState, description, nextAction: 'NONE' };
     }
   } else {
@@ -80,15 +82,20 @@ export function executeMovement(
 
   // Check if passed GO
   if (newPosition < oldPosition) {
-    player.balance += 200;
-    description += generateLog('goCollected', { oldPos: oldPosition, newPos: newPosition });
+    if (newPosition === 0) {
+      player.balance += 300;
+      description += ` এবং ঠিক 'শুরু' (GO) ঘরে এসে থেমেছেন, তাই ৳300 বোনাস পেয়েছেন।`;
+    } else {
+      player.balance += 200;
+      description += generateLog('goCollected', { oldPos: oldPosition, newPos: newPosition });
+    }
   } else {
     description += generateLog('movedTo', { tileName: boardTiles[newPosition]?.name || 'tile' });
   }
 
   // 4. Evaluate destination tile
   const destTile = boardTiles[newPosition];
-  let nextAction: 'BUY_PROPERTY' | 'PAY_RENT' | 'NONE' = 'NONE';
+  let nextAction: 'BUY_PROPERTY' | 'PAY_RENT' | 'NONE' | 'RESOLVE_CARD' = 'NONE';
   let rentDuePlayerId: string | undefined;
   let rentAmount: number | undefined;
 
@@ -97,7 +104,7 @@ export function executeMovement(
     player.jailTurns = 0;
     player.position = 10; // Jail space
     newState.doubleRollCount = 0;
-    description += ` Landed on "Go to Jail"! Sent directly to Jail.`;
+    description += ` সোজা জেলে পাঠানো হয়েছে!`;
     newState.turnStatus = 'MUST_ACT_OR_END';
     return { newState, description, nextAction: 'NONE' };
   }
@@ -114,37 +121,19 @@ export function executeMovement(
     const card = drawCard(deckType);
     
     if (card) {
-      const logKey = destTile.type === 'CHANCE' ? 'chanceDrawn' : 'chestDrawn';
-      description += generateLog(logKey, { cardText: card.text });
-
-      switch (card.action) {
-        case 'ADD_MONEY':
-          player.balance += (card.value || 0);
-          break;
-        case 'DEDUCT_MONEY':
-          player.balance -= (card.value || 0);
-          break;
-        case 'GO_TO_JAIL':
-          player.inJail = true;
-          player.jailTurns = 0;
-          player.position = 10;
-          newState.doubleRollCount = 0;
-          description += generateLog('sentToJail', {});
-          break;
-        case 'MOVE_TO':
-          if (card.value !== undefined) {
-            const newPos = card.value;
-            if (newPos < player.position) {
-              player.balance += 200; // Passed GO
-            }
-            player.position = newPos;
-            description += generateLog('movedTo', { tileName: boardTiles[newPos]?.name || 'tile' });
-          }
-          break;
-        case 'GET_OUT_OF_JAIL_FREE':
-          player.getOutOfJailFreeCards = (player.getOutOfJailFreeCards || 0) + 1;
-          break;
-      }
+      newState.drawnCard = {
+        type: destTile.type,
+        text: card.text,
+        action: card.action,
+        value: card.value,
+        isSecret: card.isSecret
+      };
+      
+      // Do NOT apply effects or generate log yet. That happens after OK.
+      description += ` এবং একটি কার্ড তুলেছেন।`;
+      nextAction = 'RESOLVE_CARD';
+      newState.turnStatus = 'MUST_RESOLVE_CARD';
+      return { newState, description, nextAction };
     }
   }
 
