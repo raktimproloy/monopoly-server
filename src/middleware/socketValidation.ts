@@ -13,6 +13,11 @@ export const BuyPropertySchema = z.object({
   tileIndex: z.number().int().min(0).max(39),
 });
 
+export const DevTeleportSchema = z.object({
+  playerId: z.string().min(1),
+  targetIndex: z.number().int().min(0).max(39),
+});
+
 export const EndTurnSchema = z.object({
   playerId: z.string().min(1),
 });

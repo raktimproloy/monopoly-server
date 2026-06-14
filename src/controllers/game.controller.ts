@@ -5,6 +5,7 @@ import {
   antiCheatGuard,
   RollDiceSchema,
   BuyPropertySchema,
+  DevTeleportSchema,
   EndTurnSchema,
   DeclareBankruptcySchema,
   PayJailFineSchema,
@@ -478,6 +479,32 @@ export class GameController {
       } catch (err: any) {
         logger.error(`Error in propose_trade for room ${roomId}`, err);
         socket.emit('error_message', err.message || 'Trade validation error');
+      }
+    });
+
+    // --- 5.6 Dev Teleport Event ---
+    socket.on('dev_teleport', async (payload: any) => {
+      const roomId = this.getSocketRoom(socket);
+      if (!roomId) return socket.emit('error_message', 'Not in a game room');
+
+      try {
+        const parsed = DevTeleportSchema.parse(payload);
+        const { playerId, targetIndex } = parsed;
+
+        const identityCheck = antiCheatGuard.verifySocketIdentity(socket, playerId);
+        if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
+
+        const state = await this.gameService.getRoomState(roomId);
+        if (!state) return socket.emit('error_message', 'Game session not found.');
+
+        const turnCheck = antiCheatGuard.verifyTurn(state, playerId);
+        if (!turnCheck.valid) return socket.emit('error_message', turnCheck.error);
+
+        const { state: updatedState, log } = await this.gameService.devTeleport(roomId, playerId, targetIndex);
+        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
+      } catch (err: any) {
+        logger.error(`Error in dev_teleport for room ${roomId}`, err);
+        socket.emit('error_message', err.message || 'Validation error');
       }
     });
 

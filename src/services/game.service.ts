@@ -67,6 +67,13 @@ export class GameService {
   }
 
   /**
+   * Delegates DEV teleport to ActionService.
+   */
+  async devTeleport(roomId: string, playerId: string, targetIndex: number): Promise<{ state: GameState; log: string }> {
+    return this.actionService.devTeleport(roomId, playerId, targetIndex);
+  }
+
+  /**
    * Delegates buying property to PropertyService.
    */
   async buyProperty(roomId: string, playerId: string, tileIndex: number): Promise<{ state: GameState; log: string }> {

@@ -52,6 +52,55 @@ export class ActionService {
   }
 
   /**
+   * Dev-only feature: Teleports player to a specific tile and simulates landing.
+   */
+  async devTeleport(roomId: string, playerId: string, targetIndex: number): Promise<{ state: GameState; log: string }> {
+    const state = await this.roomService.getRoomState(roomId);
+    if (!state) throw new Error(`Game room ${roomId} not found.`);
+
+    const { tiles } = await this.roomService.loadBoardTemplate();
+    
+    // Temporarily mutate position to target so executeMovement evaluates it naturally as a [0,0] roll
+    const tempState = JSON.parse(JSON.stringify(state)) as GameState;
+    const pState = tempState.players[playerId];
+    pState.position = targetIndex;
+    pState.inJail = false; // Free from jail forcefully if teleporting
+
+    const { newState, description, nextAction, rentDuePlayerId, rentAmount } = executeMovement(
+      tempState,
+      playerId,
+      [0, 0],
+      tiles
+    );
+
+    let finalState = newState;
+    let finalDescription = `[DEV] ${newState.players[playerId].name} teleported to tile ${targetIndex}.`;
+    
+    // Extract just the landing logic from the movement rule's description
+    const actionMatch = description.match(/\.\s*(Landed on.+|Paid.+|Sent directly to Jail.+)/);
+    if (actionMatch) {
+      finalDescription += ` ${actionMatch[1]}`;
+    }
+
+    if (nextAction === 'PAY_RENT' && rentDuePlayerId && rentAmount) {
+      const rentResult = payRent(newState, playerId, rentDuePlayerId, rentAmount);
+      finalState = rentResult.newState;
+      finalDescription += ` Rent payment processed automatically: ${rentResult.description}`;
+    }
+
+    const savedState = await this.roomService.updateRoomState(
+      roomId,
+      finalState,
+      playerId,
+      'DEV_TELEPORT',
+      { targetIndex },
+      finalDescription
+    );
+
+    return { state: savedState, log: finalDescription };
+  }
+
+  /**
    * Ends the current turn and rolls the state over to the next active player.
    */
   async endTurn(roomId: string, playerId: string): Promise<{ state: GameState; log: string }> {
