@@ -74,6 +74,13 @@ export class GameService {
   }
 
   /**
+   * Delegates DEV force manual roll to ActionService.
+   */
+  async devRollDice(roomId: string, playerId: string, d1: number, d2: number): Promise<{ state: GameState; log: string }> {
+    return this.actionService.devRollDice(roomId, playerId, d1, d2);
+  }
+
+  /**
    * Delegates buying property to PropertyService.
    */
   async buyProperty(roomId: string, playerId: string, tileIndex: number): Promise<{ state: GameState; log: string }> {

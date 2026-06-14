@@ -101,6 +101,45 @@ export class ActionService {
   }
 
   /**
+   * Dev-only feature: Forces a dice roll with manually provided integers.
+   */
+  async devRollDice(roomId: string, playerId: string, d1: number, d2: number): Promise<{ state: GameState; log: string }> {
+    const state = await this.roomService.getRoomState(roomId);
+    if (!state) throw new Error(`Game room ${roomId} not found.`);
+
+    const { tiles } = await this.roomService.loadBoardTemplate();
+
+    const dice: [number, number] = [d1, d2];
+
+    const { newState, description, nextAction, rentDuePlayerId, rentAmount } = executeMovement(
+      state,
+      playerId,
+      dice,
+      tiles
+    );
+
+    let finalState = newState;
+    let finalDescription = `[DEV] ${description}`;
+
+    if (nextAction === 'PAY_RENT' && rentDuePlayerId && rentAmount) {
+      const rentResult = payRent(newState, playerId, rentDuePlayerId, rentAmount);
+      finalState = rentResult.newState;
+      finalDescription += ` Rent payment processed automatically: ${rentResult.description}`;
+    }
+
+    const savedState = await this.roomService.updateRoomState(
+      roomId,
+      finalState,
+      playerId,
+      'DEV_ROLL_DICE',
+      { dice, originalPlayer: playerId },
+      finalDescription
+    );
+
+    return { state: savedState, log: finalDescription };
+  }
+
+  /**
    * Ends the current turn and rolls the state over to the next active player.
    */
   async endTurn(roomId: string, playerId: string): Promise<{ state: GameState; log: string }> {

@@ -18,6 +18,12 @@ export const DevTeleportSchema = z.object({
   targetIndex: z.number().int().min(0).max(39),
 });
 
+export const DevRollDiceSchema = z.object({
+  playerId: z.string().min(1),
+  d1: z.number().int().min(1).max(6),
+  d2: z.number().int().min(1).max(6),
+});
+
 export const EndTurnSchema = z.object({
   playerId: z.string().min(1),
 });

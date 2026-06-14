@@ -6,6 +6,7 @@ import {
   RollDiceSchema,
   BuyPropertySchema,
   DevTeleportSchema,
+  DevRollDiceSchema,
   EndTurnSchema,
   DeclareBankruptcySchema,
   PayJailFineSchema,
@@ -504,6 +505,32 @@ export class GameController {
         this.io.to(roomId).emit('state_updated', { state: updatedState, log });
       } catch (err: any) {
         logger.error(`Error in dev_teleport for room ${roomId}`, err);
+        socket.emit('error_message', err.message || 'Validation error');
+      }
+    });
+
+    // --- 5.7 Dev Force Roll Event ---
+    socket.on('dev_roll_dice', async (payload: any) => {
+      const roomId = this.getSocketRoom(socket);
+      if (!roomId) return socket.emit('error_message', 'Not in a game room');
+
+      try {
+        const parsed = DevRollDiceSchema.parse(payload);
+        const { playerId, d1, d2 } = parsed;
+
+        const identityCheck = antiCheatGuard.verifySocketIdentity(socket, playerId);
+        if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
+
+        const state = await this.gameService.getRoomState(roomId);
+        if (!state) return socket.emit('error_message', 'Game session not found.');
+
+        const turnCheck = antiCheatGuard.verifyTurn(state, playerId);
+        if (!turnCheck.valid) return socket.emit('error_message', turnCheck.error);
+
+        const { state: updatedState, log } = await this.gameService.devRollDice(roomId, playerId, d1, d2);
+        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
+      } catch (err: any) {
+        logger.error(`Error in dev_roll_dice for room ${roomId}`, err);
         socket.emit('error_message', err.message || 'Validation error');
       }
     });
