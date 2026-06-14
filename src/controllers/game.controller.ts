@@ -265,7 +265,7 @@ export class GameController {
         const { state: updatedState, log } = await this.gameService.rollDice(roomId, playerId);
 
         // Broadcast update to all clients in the room
-        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
+        this.io.to(roomId).emit('state_updated', { state: updatedState, log, lastRoll: updatedState.dice });
         this.processBotTurn(roomId, updatedState);
 
       } catch (err: any) {
@@ -559,7 +559,7 @@ export class GameController {
         if (!turnCheck.valid) return socket.emit('error_message', turnCheck.error);
 
         const { state: updatedState, log } = await this.gameService.devRollDice(roomId, playerId, d1, d2);
-        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
+        this.io.to(roomId).emit('state_updated', { state: updatedState, log, lastRoll: updatedState.dice });
       } catch (err: any) {
         logger.error(`Error in dev_roll_dice for room ${roomId}`, err);
         socket.emit('error_message', err.message || 'Validation error');

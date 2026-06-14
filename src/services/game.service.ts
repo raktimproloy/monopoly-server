@@ -70,6 +70,20 @@ export class GameService {
   }
 
   /**
+   * Delegates DEV teleport to ActionService.
+   */
+  async devTeleport(roomId: string, playerId: string, targetIndex: number): Promise<{ state: GameState; log: string }> {
+    return this.actionService.devTeleport(roomId, playerId, targetIndex);
+  }
+
+  /**
+   * Delegates DEV force manual roll to ActionService.
+   */
+  async devRollDice(roomId: string, playerId: string, d1: number, d2: number): Promise<{ state: GameState; log: string }> {
+    return this.actionService.devRollDice(roomId, playerId, d1, d2);
+  }
+
+  /**
    * Delegates resolving a drawn card to ActionService.
    */
   async resolveCard(roomId: string, playerId: string): Promise<{ state: GameState; log: string }> {
