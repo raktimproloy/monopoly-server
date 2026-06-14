@@ -1,4 +1,5 @@
 import { GameState, TradeOfferPayload } from '../../../shared/types';
+import { generateLog } from '../utils/logGenerator';
 
 /**
  * Validates a trade proposal.
@@ -89,9 +90,10 @@ export function executeTrade(
     }
   }
 
-  const description = `Trade complete! ${sender.name} and ${receiver.name} swapped assets. ` +
-    `Sender gave: ৳${offer.offerCash} & properties [${offer.offerPropertyIndexes.join(', ')}]. ` +
-    `Receiver gave: ৳${offer.requestCash} & properties [${offer.requestPropertyIndexes.join(', ')}].`;
+  const description = generateLog('tradeComplete', {
+    senderName: sender.name,
+    receiverName: receiver.name
+  });
 
   return { newState, description };
 }

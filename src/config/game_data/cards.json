@@ -1,0 +1,74 @@
+{
+  "chance": [
+    {
+      "id": "chance_1",
+      "text": "ব্যাংক আপনাকে লভ্যাংশ দিয়েছে! ৳50 গ্রহণ করুন।",
+      "action": "ADD_MONEY",
+      "value": 50
+    },
+    {
+      "id": "chance_2",
+      "text": "ট্রাফিক আইন ভঙ্গের জন্য জরিমানা! ৳15 প্রদান করুন।",
+      "action": "DEDUCT_MONEY",
+      "value": 15
+    },
+    {
+      "id": "chance_3",
+      "text": "সরাসরি জেলে যান! যাবার পথে ৳200 পাবেন না।",
+      "action": "GO_TO_JAIL"
+    },
+    {
+      "id": "chance_4",
+      "text": "জেল থেকে মুক্তির কার্ড! এই কার্ডটি নিজের কাছে রাখুন।",
+      "action": "GET_OUT_OF_JAIL_FREE"
+    },
+    {
+      "id": "chance_5",
+      "text": "লটারিতে জয়লাভ করেছেন! ৳150 পেলেন।",
+      "action": "ADD_MONEY",
+      "value": 150
+    },
+    {
+      "id": "chance_6",
+      "text": "শুরু (GO) ঘরে ফিরে যান এবং ৳200 বুঝে নিন।",
+      "action": "MOVE_TO",
+      "value": 0
+    }
+  ],
+  "communityChest": [
+    {
+      "id": "chest_1",
+      "text": "ডাক্তারের ফি প্রদান করুন! ৳50 কেটে নেওয়া হলো।",
+      "action": "DEDUCT_MONEY",
+      "value": 50
+    },
+    {
+      "id": "chest_2",
+      "text": "আয়কর ফেরত পেয়েছেন! ৳20 গ্রহণ করুন।",
+      "action": "ADD_MONEY",
+      "value": 20
+    },
+    {
+      "id": "chest_3",
+      "text": "সরাসরি জেলে যান! যাবার পথে ৳200 পাবেন না।",
+      "action": "GO_TO_JAIL"
+    },
+    {
+      "id": "chest_4",
+      "text": "জেল থেকে মুক্তির কার্ড! এই কার্ডটি নিজের কাছে রাখুন।",
+      "action": "GET_OUT_OF_JAIL_FREE"
+    },
+    {
+      "id": "chest_5",
+      "text": "জন্মদিনের উপহার হিসেবে ৳100 পেয়েছেন।",
+      "action": "ADD_MONEY",
+      "value": 100
+    },
+    {
+      "id": "chest_6",
+      "text": "স্কুলের ফি বাবদ ৳50 প্রদান করুন।",
+      "action": "DEDUCT_MONEY",
+      "value": 50
+    }
+  ]
+}

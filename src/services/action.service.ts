@@ -1,6 +1,7 @@
 import { RoomService } from './room.service';
 import { GameState } from '../../../shared/types';
 import { executeMovement, payRent } from '../rules';
+import { generateLog } from '../utils/logGenerator';
 
 export class ActionService {
   private roomService: RoomService;
@@ -79,7 +80,10 @@ export class ActionService {
     newState.turnStatus = 'MUST_ROLL';
     newState.doubleRollCount = 0;
 
-    const description = `${player.name} ended their turn. It is now ${newState.players[nextPlayerId].name}'s turn.`;
+    const description = generateLog('turnEnded', {
+      playerName: player.name,
+      nextPlayerName: newState.players[nextPlayerId].name
+    });
 
     const savedState = await this.roomService.updateRoomState(
       roomId,
@@ -147,7 +151,10 @@ export class ActionService {
       });
     }
 
-    let description = `${pState.name} declared bankruptcy and surrendered all assets to ${creditorName}.`;
+    let description = generateLog('bankruptcyDeclared', {
+      playerName: pState.name,
+      creditorName
+    });
 
     // Rotate turn if it was their turn
     if (newState.currentTurnPlayerId === playerId) {
@@ -209,7 +216,9 @@ export class ActionService {
     pState.balance -= 50;
     newState.turnStatus = 'MUST_ROLL';
 
-    const description = `${pState.name} paid ৳50 fine and is released from Jail.`;
+    const description = generateLog('paidJailFine', {
+      playerName: pState.name
+    });
 
     const savedState = await this.roomService.updateRoomState(
       roomId,

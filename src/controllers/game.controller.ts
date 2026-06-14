@@ -141,7 +141,35 @@ export class GameController {
       }
     });
 
-    // --- 1.05 Get Room Details Event ---
+    // --- 1.05 Add Bot Event ---
+    socket.on('add_bot', async () => {
+      const roomId = this.getSocketRoom(socket);
+      if (!roomId) return socket.emit('error_message', 'Not in a game room');
+      try {
+        const state = await this.gameService.getRoomState(roomId);
+        if (!state) return;
+        if (state.gameStatus !== 'LOBBY') {
+          return socket.emit('error_message', 'Game already started');
+        }
+        const botId = `bot_${Math.random().toString(36).substring(2, 9)}`;
+        const botName = `Bot ${Object.keys(state.players).length}`;
+        const AVATAR_COLORS = ['#8BA4F9', '#D8B4F8', '#F98BA4', '#A4F98B'];
+        const botAvatar = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
+        
+        const updatedState = await this.gameService.joinRoom(roomId, {
+          id: botId,
+          name: botName,
+          avatar: botAvatar
+        });
+        
+        this.io.to(roomId).emit('state_updated', { state: updatedState, log: `[SYS] ${botName} added to the lobby.` });
+      } catch (err: any) {
+        logger.error(`Error in add_bot for room ${roomId}`, err);
+        socket.emit('error_message', err.message || 'Failed to add bot');
+      }
+    });
+
+    // --- 1.06 Get Room Details Event ---
     socket.on('get_room_details', async ({ roomId }: { roomId: string }, callback: (data: any) => void) => {
       try {
         if (!roomId) {
@@ -203,6 +231,7 @@ export class GameController {
           state: updatedState,
           log: `[SYS] Tactical matrix compiled! Match started.`
         });
+        this.processBotTurn(roomId, updatedState);
       } catch (err: any) {
         logger.error(`Error in start_game for room ${roomId}`, err);
         socket.emit('error_message', err.message || 'Failed to start game');
@@ -235,6 +264,7 @@ export class GameController {
 
         // Broadcast update to all clients in the room
         this.io.to(roomId).emit('state_updated', { state: updatedState, log });
+        this.processBotTurn(roomId, updatedState);
 
       } catch (err: any) {
         logger.error(`Error in roll_dice for room ${roomId}`, err);
@@ -264,6 +294,7 @@ export class GameController {
         const { state: updatedState, log } = await this.gameService.buyProperty(roomId, playerId, tileIndex);
 
         this.io.to(roomId).emit('state_updated', { state: updatedState, log });
+        this.processBotTurn(roomId, updatedState);
 
       } catch (err: any) {
         logger.error(`Error in buy_property for room ${roomId}`, err);
@@ -550,6 +581,7 @@ export class GameController {
         const { state: updatedState, log } = await this.gameService.endTurn(roomId, playerId);
 
         this.io.to(roomId).emit('state_updated', { state: updatedState, log });
+        this.processBotTurn(roomId, updatedState);
 
       } catch (err: any) {
         logger.error(`Error in end_turn for room ${roomId}`, err);
@@ -577,6 +609,7 @@ export class GameController {
         const { state: updatedState, log } = await this.gameService.declareBankruptcy(roomId, playerId);
 
         this.io.to(roomId).emit('state_updated', { state: updatedState, log });
+        this.processBotTurn(roomId, updatedState);
 
       } catch (err: any) {
         logger.error(`Error in declare_bankruptcy for room ${roomId}`, err);
@@ -624,5 +657,62 @@ export class GameController {
     // Standard approach: socket rooms contains socket ID itself and any room channels joined
     const rooms = Array.from(socket.rooms).filter((r) => r !== socket.id);
     return rooms.length > 0 ? rooms[0] : null;
+  }
+
+  /**
+   * Bot AI Loop
+   */
+  private async processBotTurn(roomId: string, state: any) {
+    if (state.gameStatus !== 'ACTIVE') return;
+    const currentTurnPlayerId = state.currentTurnPlayerId;
+    if (!currentTurnPlayerId.startsWith('bot_')) return;
+    
+    // Wait a bit to simulate thinking
+    setTimeout(async () => {
+      try {
+        const latestState = await this.gameService.getRoomState(roomId);
+        if (!latestState || latestState.gameStatus !== 'ACTIVE' || latestState.currentTurnPlayerId !== currentTurnPlayerId) return;
+
+        if (latestState.turnStatus === 'MUST_ROLL') {
+          const { state: updatedState, log } = await this.gameService.rollDice(roomId, currentTurnPlayerId);
+          this.io.to(roomId).emit('state_updated', { state: updatedState, log });
+          this.processBotTurn(roomId, updatedState);
+        } else if (latestState.turnStatus === 'MUST_ACT_OR_END' || latestState.turnStatus === 'BANKRUPTCY_PENDING') {
+          const botPlayer = latestState.players[currentTurnPlayerId];
+          if (botPlayer.balance < 0) {
+            const { state: updatedState, log } = await this.gameService.declareBankruptcy(roomId, currentTurnPlayerId);
+            this.io.to(roomId).emit('state_updated', { state: updatedState, log });
+            this.processBotTurn(roomId, updatedState);
+            return;
+          }
+
+          // Check if bot is on an unowned property
+          const botPosition = botPlayer.position;
+          const template = await this.gameService.loadBoardTemplate();
+          const tile = template.tiles[botPosition];
+          if (tile && (tile.type === 'STREET' || tile.type === 'RAILROAD' || tile.type === 'UTILITY')) {
+            if (!latestState.properties[botPosition] && botPlayer.balance >= (tile.price || 0)) {
+              const { state: updatedState, log } = await this.gameService.buyProperty(roomId, currentTurnPlayerId, botPosition);
+              this.io.to(roomId).emit('state_updated', { state: updatedState, log });
+              this.processBotTurn(roomId, updatedState);
+              return;
+            }
+          }
+          
+          // End turn
+          const { state: updatedState, log } = await this.gameService.endTurn(roomId, currentTurnPlayerId);
+          this.io.to(roomId).emit('state_updated', { state: updatedState, log });
+          this.processBotTurn(roomId, updatedState);
+        }
+      } catch (err) {
+        logger.error(`Bot AI error in room ${roomId}`, err);
+        // Fallback to ending turn to avoid stuck state
+        try {
+          const { state: updatedState, log } = await this.gameService.endTurn(roomId, currentTurnPlayerId);
+          this.io.to(roomId).emit('state_updated', { state: updatedState, log });
+          this.processBotTurn(roomId, updatedState);
+        } catch (fallbackErr) {}
+      }
+    }, 1500);
   }
 }

@@ -1,6 +1,7 @@
 import { RoomService } from './room.service';
 import { GameState } from '../../../shared/types';
 import { canBuyProperty, buyProperty, canMortgageProperty, mortgageProperty, canUnmortgageProperty, unmortgageProperty } from '../rules';
+import { generateLog } from '../utils/logGenerator';
 
 export class PropertyService {
   private roomService: RoomService;
@@ -35,7 +36,7 @@ export class PropertyService {
           isMortgaged: false
         };
         
-        const description = `[DEV] ${player.name} remotely acquired ${tile.name} for ৳${tile.price}.`;
+        const description = generateLog('adminAcquiredProperty', { playerName: player.name, tileName: tile.name, price: tile.price });
         const savedState = await this.roomService.updateRoomState(
           roomId, newState, playerId, 'BUY_PROPERTY', { tileIndex }, description
         );
@@ -155,7 +156,12 @@ export class PropertyService {
     player.balance -= cost;
     prop.houses = currentHouses + 1;
 
-    const description = `[UPGRADE] ${player.name} built a ${prop.houses === 5 ? 'hotel' : 'house'} on ${tile.name} for ৳${cost}.`;
+    const description = generateLog('upgradeHouse', { 
+      playerName: player.name, 
+      houseType: prop.houses === 5 ? 'hotel' : 'house', 
+      tileName: tile.name, 
+      cost 
+    });
 
     const savedState = await this.roomService.updateRoomState(
       roomId, newState, playerId, 'BUILD_HOUSE', { tileIndex }, description
@@ -194,7 +200,12 @@ export class PropertyService {
     player.balance += refund;
     prop.houses = currentHouses - 1;
 
-    const description = `[DOWNGRADE] ${player.name} broke a ${currentHouses === 5 ? 'hotel' : 'house'} from ${tile.name} for ৳${refund}.`;
+    const description = generateLog('downgradeHouse', {
+      playerName: player.name,
+      houseType: currentHouses === 5 ? 'hotel' : 'house',
+      tileName: tile.name,
+      refund
+    });
 
     if (player.balance >= 0 && newState.turnStatus === 'BANKRUPTCY_PENDING' && newState.currentTurnPlayerId === playerId) {
       newState.turnStatus = 'MUST_ACT_OR_END';
@@ -237,7 +248,11 @@ export class PropertyService {
 
     delete newState.properties[tileIndex];
 
-    const description = `[LIQUIDATE] ${player.name} liquidated ${tile.name} to the bank for ৳${refundAmount}.`;
+    const description = generateLog('liquidateProperty', {
+      playerName: player.name,
+      tileName: tile.name,
+      refundAmount
+    });
 
     if (player.balance >= 0 && newState.turnStatus === 'BANKRUPTCY_PENDING' && newState.currentTurnPlayerId === playerId) {
       newState.turnStatus = 'MUST_ACT_OR_END';
@@ -288,7 +303,11 @@ export class PropertyService {
     newState.previousGameStatus = newState.gameStatus;
     newState.gameStatus = 'AUCTION';
 
-    const description = `[AUCTION] ${player.name} initiated auction for ${tile.name}. Base: ৳${startPrice}.`;
+    const description = generateLog('auctionInitiated', {
+      playerName: player.name,
+      tileName: tile.name,
+      startPrice
+    });
 
     const savedState = await this.roomService.updateRoomState(
       roomId, newState, playerId, 'AUCTION_PROPERTY', { tileIndex }, description
@@ -325,7 +344,10 @@ export class PropertyService {
     auction.currentBid = newBid;
     auction.endTime = Date.now() + 10000; // Reset to 10 seconds
 
-    const description = `[AUCTION] ${player.name} bid ৳${newBid}.`;
+    const description = generateLog('auctionBid', {
+      playerName: player.name,
+      newBid
+    });
 
     const savedState = await this.roomService.updateRoomState(
       roomId, newState, playerId, 'PLACE_BID', { newBid }, description
@@ -358,7 +380,12 @@ export class PropertyService {
         if (prop) {
             prop.ownerId = highestBidderId;
         }
-        description = `[AUCTION] ${winner.name} secured ${tile?.name} with a bid of ৳${currentBid}, paying ${seller.name}.`;
+        description = generateLog('auctionSecuredWithSeller', {
+          winnerName: winner.name,
+          tileName: tile?.name,
+          currentBid,
+          sellerName: seller.name
+        });
       } else {
         newState.properties[propertyIndex] = {
           tileIndex: propertyIndex,
@@ -366,10 +393,14 @@ export class PropertyService {
           houses: 0,
           isMortgaged: false
         };
-        description = `[AUCTION] ${winner.name} secured ${tile?.name} for ৳${currentBid}.`;
+        description = generateLog('auctionSecured', {
+          winnerName: winner.name,
+          tileName: tile?.name,
+          currentBid
+        });
       }
     } else {
-      description = `[AUCTION] Terminated. No valid bids for ${tile?.name}.`;
+      description = generateLog('auctionTerminated', { tileName: tile?.name });
     }
 
     newState.gameStatus = newState.previousGameStatus || 'ACTIVE';

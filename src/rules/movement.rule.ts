@@ -1,4 +1,5 @@
 import { GameState, Player, BoardTile } from '../../../shared/types';
+import { drawCard, generateLog } from '../utils/logGenerator';
 
 export interface MovementResult {
   newState: GameState;
@@ -27,7 +28,7 @@ export function executeMovement(
 
   const [d1, d2] = diceRoll;
   const isDouble = d1 === d2;
-  let description = `${player.name} rolled [${d1}, ${d2}]`;
+  let description = generateLog('rolledDice', { playerName: player.name, dice1: d1, dice2: d2 });
 
   // Update dice in state
   newState.dice = diceRoll;
@@ -80,9 +81,9 @@ export function executeMovement(
   // Check if passed GO
   if (newPosition < oldPosition) {
     player.balance += 200;
-    description += ` and moved from tile ${oldPosition} to ${newPosition}, passing GO and collecting ৳200.`;
+    description += generateLog('goCollected', { oldPos: oldPosition, newPos: newPosition });
   } else {
-    description += ` and moved from tile ${oldPosition} to ${newPosition}.`;
+    description += generateLog('movedTo', { tileName: boardTiles[newPosition]?.name || 'tile' });
   }
 
   // 4. Evaluate destination tile
@@ -104,7 +105,47 @@ export function executeMovement(
   if (destTile.type === 'TAX') {
     const taxCost = destTile.price || 100;
     player.balance -= taxCost;
-    description += ` Landed on tax tile "${destTile.name}". Paid ৳${taxCost} to the bank.`;
+    description += generateLog('taxPaid', { tileName: destTile.name, taxAmount: taxCost });
+  }
+
+  // Draw Card Logic (Chance / Chest)
+  if (destTile.type === 'CHANCE' || destTile.type === 'CHEST') {
+    const deckType = destTile.type === 'CHANCE' ? 'chance' : 'communityChest';
+    const card = drawCard(deckType);
+    
+    if (card) {
+      const logKey = destTile.type === 'CHANCE' ? 'chanceDrawn' : 'chestDrawn';
+      description += generateLog(logKey, { cardText: card.text });
+
+      switch (card.action) {
+        case 'ADD_MONEY':
+          player.balance += (card.value || 0);
+          break;
+        case 'DEDUCT_MONEY':
+          player.balance -= (card.value || 0);
+          break;
+        case 'GO_TO_JAIL':
+          player.inJail = true;
+          player.jailTurns = 0;
+          player.position = 10;
+          newState.doubleRollCount = 0;
+          description += generateLog('sentToJail', {});
+          break;
+        case 'MOVE_TO':
+          if (card.value !== undefined) {
+            const newPos = card.value;
+            if (newPos < player.position) {
+              player.balance += 200; // Passed GO
+            }
+            player.position = newPos;
+            description += generateLog('movedTo', { tileName: boardTiles[newPos]?.name || 'tile' });
+          }
+          break;
+        case 'GET_OUT_OF_JAIL_FREE':
+          player.getOutOfJailFreeCards = (player.getOutOfJailFreeCards || 0) + 1;
+          break;
+      }
+    }
   }
 
   // Check if tile is a purchasable property (STREET, RAILROAD, UTILITY)
@@ -115,7 +156,7 @@ export function executeMovement(
     if (!propState || !propState.ownerId) {
       // Unowned
       nextAction = 'BUY_PROPERTY';
-      description += ` Landed on unowned property "${destTile.name}". Can buy for ৳${destTile.price}.`;
+      description += generateLog('landedUnownedProperty', { tileName: destTile.name, price: destTile.price });
     } else if (propState.ownerId !== playerId && !propState.isMortgaged) {
       // Owned by someone else, and not mortgaged -> Rent is due
       nextAction = 'PAY_RENT';
@@ -152,12 +193,19 @@ export function executeMovement(
       }
 
       if (rentAmount && rentAmount > 0) {
-        description += ` Landed on "${destTile.name}" owned by ${newState.players[propState.ownerId]?.name || 'another player'}. Rent of ৳${rentAmount} is due.`;
+        description += generateLog('landedOwnedPropertyRentDue', {
+          tileName: destTile.name,
+          ownerName: newState.players[propState.ownerId]?.name || 'another player',
+          rentAmount
+        });
       }
     } else if (propState.ownerId === playerId) {
-      description += ` Landed on their own property "${destTile.name}".`;
+      description += generateLog('landedOwned', { tileName: destTile.name });
     } else if (propState.isMortgaged) {
-      description += ` Landed on "${destTile.name}" which is currently mortgaged by ${newState.players[propState.ownerId]?.name || 'owner'}. No rent due.`;
+      description += generateLog('landedMortgaged', { 
+        tileName: destTile.name,
+        ownerName: newState.players[propState.ownerId]?.name || 'owner'
+      });
     }
   }
 

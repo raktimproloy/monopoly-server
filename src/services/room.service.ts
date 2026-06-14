@@ -111,6 +111,14 @@ export class RoomService {
         [templateName]
       );
       if (rows.length > 0) {
+        if (templateName === 'Standard Monopoly') {
+          // Forcefully sync the DB with the updated Bengali tiles
+          await db.query(
+            'UPDATE board_templates SET board_data = $1 WHERE id = $2',
+            [{ tiles: STANDARD_TILES_FALLBACK }, rows[0].id]
+          );
+          return { id: rows[0].id, tiles: STANDARD_TILES_FALLBACK };
+        }
         return {
           id: rows[0].id,
           tiles: rows[0].board_data.tiles as BoardTile[]
