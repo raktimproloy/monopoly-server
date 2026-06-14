@@ -145,7 +145,9 @@ export class RoomService {
     const defaultSettings: GameSettings = {
       startingCash: 1500,
       doubleRentOnCompleteSet: true,
-      freeParkingCashPool: false
+      freeParkingCashPool: false,
+      allowUnpurchasedAuction: true,
+      allowMortgage: true
     };
 
     initialPlayers.forEach((p) => {
@@ -173,7 +175,8 @@ export class RoomService {
       gameStatus: 'LOBBY', // Initialized as LOBBY, waiting for players
       winnerId: null,
       turnStatus: 'MUST_ROLL',
-      settings: defaultSettings
+      settings: defaultSettings,
+      freeParkingPool: 0
     };
 
     if (stateFlags.useMemoryFallback) {
@@ -292,7 +295,7 @@ export class RoomService {
       newState.players[pId].balance = settings.startingCash;
     });
 
-    const log = `গেমের নিয়ম পরিবর্তন করা হয়েছে: প্রারম্ভিক টাকা ৳${settings.startingCash}, ডাবল ভাড়া: ${settings.doubleRentOnCompleteSet ? 'হ্যাঁ' : 'না'}, ফ্রি পার্কিং পুল: ${settings.freeParkingCashPool ? 'হ্যাঁ' : 'না'}।`;
+    const log = `গেমের নিয়ম পরিবর্তন করা হয়েছে: প্রারম্ভিক টাকা ৳${settings.startingCash}, ডাবল ভাড়া: ${settings.doubleRentOnCompleteSet ? 'হ্যাঁ' : 'না'}, ফ্রি পার্কিং পুল: ${settings.freeParkingCashPool ? 'হ্যাঁ' : 'না'}, নিলাম: ${settings.allowUnpurchasedAuction ? 'হ্যাঁ' : 'না'}, মর্টগেজ: ${settings.allowMortgage ? 'হ্যাঁ' : 'না'}।`;
 
     const resultState = await this.updateRoomState(
       roomId,

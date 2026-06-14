@@ -37,7 +37,7 @@ export class ActionService {
     if (nextAction === 'PAY_RENT' && rentDuePlayerId && rentAmount) {
       const rentResult = payRent(newState, playerId, rentDuePlayerId, rentAmount);
       finalState = rentResult.newState;
-      finalDescription += ` Rent payment processed automatically: ${rentResult.description}`;
+      finalDescription = rentResult.description;
     }
 
     const savedState = await this.roomService.updateRoomState(
@@ -86,7 +86,7 @@ export class ActionService {
     if (nextAction === 'PAY_RENT' && rentDuePlayerId && rentAmount) {
       const rentResult = payRent(newState, playerId, rentDuePlayerId, rentAmount);
       finalState = rentResult.newState;
-      finalDescription += ` Rent payment processed automatically: ${rentResult.description}`;
+      finalDescription = rentResult.description;
     }
 
     const savedState = await this.roomService.updateRoomState(
@@ -125,7 +125,7 @@ export class ActionService {
     if (nextAction === 'PAY_RENT' && rentDuePlayerId && rentAmount) {
       const rentResult = payRent(newState, playerId, rentDuePlayerId, rentAmount);
       finalState = rentResult.newState;
-      finalDescription += ` Rent payment processed automatically: ${rentResult.description}`;
+      finalDescription = rentResult.description;
     }
 
     const savedState = await this.roomService.updateRoomState(
@@ -172,22 +172,54 @@ export class ActionService {
       return { state: savedState, log: description };
     }
 
+    // Auto jail release logic
+    if (newState.players[playerId].inJail) {
+      // Only increment jail turns if they started the turn in jail (dice not rolled)
+      if (newState.dice[0] === 0 && newState.dice[1] === 0) {
+        newState.players[playerId].jailTurns += 1;
+        if (newState.players[playerId].jailTurns >= 3) {
+          newState.players[playerId].inJail = false;
+          newState.players[playerId].jailTurns = 0;
+          description += `${player.name} ৩ দান জেলে থাকার পর স্বয়ংক্রিয়ভাবে মুক্তি পেয়েছেন! `;
+        }
+      }
+    }
+
     const currentIndex = newState.playerOrder.indexOf(playerId);
     let nextIndex = (currentIndex + 1) % newState.playerOrder.length;
 
     let attempts = 0;
-    while (newState.players[newState.playerOrder[nextIndex]].isBankrupt && attempts < newState.playerOrder.length) {
-      nextIndex = (nextIndex + 1) % newState.playerOrder.length;
-      attempts++;
+    while (attempts < newState.playerOrder.length) {
+      const candidateId = newState.playerOrder[nextIndex];
+      const candidate = newState.players[candidateId];
+
+      if (candidate.isBankrupt) {
+        nextIndex = (nextIndex + 1) % newState.playerOrder.length;
+        attempts++;
+        continue;
+      }
+
+      if (candidate.skipTurns && candidate.skipTurns > 0) {
+        candidate.skipTurns -= 1;
+        description += `${candidate.name} অবসরে থাকায় এই দানটি দিতে পারলেন না। `;
+        nextIndex = (nextIndex + 1) % newState.playerOrder.length;
+        attempts++;
+        continue;
+      }
+      break;
     }
 
     const nextPlayerId = newState.playerOrder[nextIndex];
     newState.currentTurnPlayerId = nextPlayerId;
-    newState.turnStatus = 'MUST_ROLL';
+    if (newState.players[nextPlayerId].inJail) {
+      newState.turnStatus = 'MUST_ACT_OR_END';
+    } else {
+      newState.turnStatus = 'MUST_ROLL';
+    }
     newState.doubleRollCount = 0;
     newState.dice = [0, 0]; // reset dice visually for next player
 
-    const description = generateLog('turnEnded', {
+    description += generateLog('turnEnded', {
       playerName: player.name,
       nextPlayerName: newState.players[nextPlayerId].name
     });
@@ -276,7 +308,11 @@ export class ActionService {
 
       const nextPlayerId = newState.playerOrder[nextIndex];
       newState.currentTurnPlayerId = nextPlayerId;
-      newState.turnStatus = 'MUST_ROLL';
+      if (newState.players[nextPlayerId].inJail) {
+        newState.turnStatus = 'MUST_ACT_OR_END';
+      } else {
+        newState.turnStatus = 'MUST_ROLL';
+      }
       newState.doubleRollCount = 0;
       description += ` It is now ${newState.players[nextPlayerId].name}'s turn.`;
     }
@@ -321,11 +357,47 @@ export class ActionService {
     pState.inJail = false;
     pState.jailTurns = 0;
     pState.balance -= 50;
-    newState.turnStatus = 'MUST_ROLL';
+    if (newState.settings.freeParkingCashPool) {
+      newState.freeParkingPool = (newState.freeParkingPool || 0) + 50;
+    }
 
-    const description = generateLog('paidJailFine', {
+    let description = generateLog('paidJailFine', {
       playerName: pState.name
     });
+
+    const currentIndex = newState.playerOrder.indexOf(playerId);
+    let nextIndex = (currentIndex + 1) % newState.playerOrder.length;
+    let attempts = 0;
+    while (attempts < newState.playerOrder.length) {
+      const candidateId = newState.playerOrder[nextIndex];
+      const candidate = newState.players[candidateId];
+
+      if (candidate.isBankrupt) {
+        nextIndex = (nextIndex + 1) % newState.playerOrder.length;
+        attempts++;
+        continue;
+      }
+      if (candidate.skipTurns && candidate.skipTurns > 0) {
+        candidate.skipTurns -= 1;
+        description += ` ${candidate.name} অবসরে থাকায় এই দানটি দিতে পারলেন না।`;
+        nextIndex = (nextIndex + 1) % newState.playerOrder.length;
+        attempts++;
+        continue;
+      }
+      break;
+    }
+
+    const nextPlayerId = newState.playerOrder[nextIndex];
+    newState.currentTurnPlayerId = nextPlayerId;
+    if (newState.players[nextPlayerId].inJail) {
+      newState.turnStatus = 'MUST_ACT_OR_END';
+    } else {
+      newState.turnStatus = 'MUST_ROLL';
+    }
+    newState.doubleRollCount = 0;
+    newState.dice = [0, 0];
+
+    description += ` এবার ${newState.players[nextPlayerId].name}-এর দান।`;
 
     const savedState = await this.roomService.updateRoomState(
       roomId,
@@ -371,6 +443,9 @@ export class ActionService {
         break;
       case 'DEDUCT_MONEY':
         player.balance -= (card.value || 0);
+        if (newState.settings.freeParkingCashPool) {
+          newState.freeParkingPool = (newState.freeParkingPool || 0) + (card.value || 0);
+        }
         break;
       case 'GO_TO_JAIL':
         player.inJail = true;

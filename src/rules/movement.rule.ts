@@ -112,7 +112,20 @@ export function executeMovement(
   if (destTile.type === 'TAX') {
     const taxCost = destTile.price || 100;
     player.balance -= taxCost;
+    if (newState.settings.freeParkingCashPool) {
+      newState.freeParkingPool = (newState.freeParkingPool || 0) + taxCost;
+    }
     description += generateLog('taxPaid', { tileName: destTile.name, taxAmount: taxCost });
+  }
+
+  if (destTile.type === 'FREE_PARKING') {
+    player.skipTurns = (player.skipTurns || 0) + 1;
+    description += ` অবসরে গিয়েছেন! তিনি পরের দানটি দিতে পারবেন না।`;
+    if (newState.settings.freeParkingCashPool && (newState.freeParkingPool || 0) > 0) {
+      player.balance += (newState.freeParkingPool || 0);
+      description += ` এবং অবসর তহবিল থেকে ৳${newState.freeParkingPool} পেয়েছেন!`;
+      newState.freeParkingPool = 0;
+    }
   }
 
   // Draw Card Logic (Chance / Chest)

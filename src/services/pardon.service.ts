@@ -64,9 +64,42 @@ export class PardonService {
     pState.getOutOfJailFreeCards = (pState.getOutOfJailFreeCards || 1) - 1;
     pState.inJail = false;
     pState.jailTurns = 0;
-    newState.turnStatus = 'MUST_ROLL';
 
-    const description = `${player.name} পার্ডন কার্ড (Get Out of Jail Free) ব্যবহার করে জেল থেকে ছাড়া পেয়েছেন।`;
+    let description = `${player.name} পার্ডন কার্ড (Get Out of Jail Free) ব্যবহার করে জেল থেকে ছাড়া পেয়েছেন।`;
+
+    const currentIndex = newState.playerOrder.indexOf(playerId);
+    let nextIndex = (currentIndex + 1) % newState.playerOrder.length;
+    let attempts = 0;
+    while (attempts < newState.playerOrder.length) {
+      const candidateId = newState.playerOrder[nextIndex];
+      const candidate = newState.players[candidateId];
+
+      if (candidate.isBankrupt) {
+        nextIndex = (nextIndex + 1) % newState.playerOrder.length;
+        attempts++;
+        continue;
+      }
+      if (candidate.skipTurns && candidate.skipTurns > 0) {
+        candidate.skipTurns -= 1;
+        description += ` ${candidate.name} অবসরে থাকায় এই দানটি দিতে পারলেন না।`;
+        nextIndex = (nextIndex + 1) % newState.playerOrder.length;
+        attempts++;
+        continue;
+      }
+      break;
+    }
+
+    const nextPlayerId = newState.playerOrder[nextIndex];
+    newState.currentTurnPlayerId = nextPlayerId;
+    if (newState.players[nextPlayerId].inJail) {
+      newState.turnStatus = 'MUST_ACT_OR_END';
+    } else {
+      newState.turnStatus = 'MUST_ROLL';
+    }
+    newState.doubleRollCount = 0;
+    newState.dice = [0, 0];
+
+    description += ` এবার ${newState.players[nextPlayerId].name}-এর দান।`;
 
     const savedState = await this.roomService.updateRoomState(
       roomId,

@@ -628,7 +628,7 @@ export class GameController {
         if (!turnCheck.valid) return socket.emit('error_message', turnCheck.error);
 
         // Turn status assertion (cannot end turn without moving, unless in jail)
-        if (state.turnStatus === 'MUST_ROLL') {
+        if (state.turnStatus === 'MUST_ROLL' && !state.players[playerId].inJail) {
           return socket.emit('error_message', 'You must roll the dice before ending your turn.');
         }
 
@@ -792,6 +792,11 @@ export class GameController {
           
           // End turn
           const { state: updatedState, log } = await this.gameService.endTurn(roomId, currentTurnPlayerId);
+          this.io.to(roomId).emit('state_updated', { state: updatedState, log });
+          this.processBotTurn(roomId, updatedState);
+        } else if (latestState.turnStatus === 'MUST_RESOLVE_CARD') {
+          // Bot resolves chance/chest card
+          const { state: updatedState, log } = await this.gameService.resolveCard(roomId, currentTurnPlayerId);
           this.io.to(roomId).emit('state_updated', { state: updatedState, log });
           this.processBotTurn(roomId, updatedState);
         }

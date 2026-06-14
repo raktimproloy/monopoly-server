@@ -296,8 +296,10 @@ export class PropertyService {
       propertyIndex: tileIndex,
       highestBidderId: null,
       currentBid: startPrice,
-      endTime: Date.now() + 10000,
+      endTime: Date.now() + 6000,
       sellerId: sellerId,
+      initiatorId: playerId,
+      bids: []
     };
     
     newState.previousGameStatus = newState.gameStatus;
@@ -326,10 +328,10 @@ export class PropertyService {
     if (Date.now() > auction.endTime) {
       throw new Error('Auction has already ended.');
     }
-    if (auction.sellerId === playerId) {
-      throw new Error('You cannot bid on your own property.');
+    if (auction.sellerId === playerId || auction.initiatorId === playerId) {
+      throw new Error('You cannot bid on this property.');
     }
-    if (amountToAdd !== 10 && amountToAdd !== 100) {
+    if (amountToAdd !== 2 && amountToAdd !== 10 && amountToAdd !== 50) {
       throw new Error('Invalid bid amount.');
     }
 
@@ -342,7 +344,14 @@ export class PropertyService {
 
     auction.highestBidderId = playerId;
     auction.currentBid = newBid;
-    auction.endTime = Date.now() + 10000; // Reset to 10 seconds
+    auction.endTime = Date.now() + 6000; // Reset to 6 seconds
+    
+    auction.bids = auction.bids || [];
+    auction.bids.push({
+      playerId,
+      amount: newBid,
+      timestamp: Date.now()
+    });
 
     const description = generateLog('auctionBid', {
       playerName: player.name,
@@ -401,6 +410,15 @@ export class PropertyService {
       }
     } else {
       description = generateLog('auctionTerminated', { tileName: tile?.name });
+      if (!newState.properties[propertyIndex]) {
+        newState.properties[propertyIndex] = {
+          tileIndex: propertyIndex,
+          ownerId: null as any,
+          isMortgaged: false,
+          houses: 0,
+          auctionFailed: true
+        } as any;
+      }
     }
 
     newState.gameStatus = newState.previousGameStatus || 'ACTIVE';
