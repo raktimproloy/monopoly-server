@@ -39,7 +39,27 @@ export class GameController {
 
     // Start periodic room cleanup sweep every 5 minutes
     setInterval(() => this.cleanupInactiveRooms(), 5 * 60 * 1000);
+    // Start market crash ticker every 5 seconds
+    setInterval(() => this.tickMarketCrashRooms(), 5 * 1000);
     logger.info('Room lifecycle manager initialized (TTL: 30min inactivity, 5min post-finish)');
+  }
+
+  /**
+   * Processes market crash timers for all active rooms.
+   */
+  private async tickMarketCrashRooms() {
+    const roomIds = Object.keys(roomActivity);
+    for (const roomId of roomIds) {
+      try {
+        const result = await this.gameService.processMarketCrashTimers(roomId);
+        if (result) {
+          this.io.to(roomId).emit('state_updated', { state: result.state, log: result.log });
+          this.processBotTurn(roomId, result.state);
+        }
+      } catch (err) {
+        logger.error(`Error processing market crash timers for room ${roomId}`, err);
+      }
+    }
   }
 
   /**
@@ -117,6 +137,8 @@ export class GameController {
         // Join socket.io room channel for room-isolated broadcasts
         await socket.join(roomId);
         logger.info(`Socket ${socket.id} joined room channel: ${roomId}`);
+        
+        this.touchRoom(roomId);
 
         const state = await this.gameService.joinRoom(roomId, {
           id: userId,
@@ -470,6 +492,11 @@ export class GameController {
         const state = await this.gameService.getRoomState(roomId);
         if (!state) return socket.emit('error_message', 'Game session not found.');
 
+        if (state.settings.jailLoss) {
+          if (state.players[offer.senderId]?.inJail) return socket.emit('error_message', 'Jail Loss: You cannot propose trades while in jail.');
+          if (state.players[offer.receiverId]?.inJail) return socket.emit('error_message', 'Jail Loss: You cannot propose trades to a player in jail.');
+        }
+
         // Verify receiver belongs to same game
         const receiverCheck = antiCheatGuard.verifyMembership(state, offer.receiverId);
         if (!receiverCheck.valid) return socket.emit('error_message', receiverCheck.error);
@@ -594,6 +621,42 @@ export class GameController {
       }
     });
 
+    // --- 5.9 Dev Force Crash Event ---
+    socket.on('dev_force_crash', async (payload: any) => {
+      const roomId = this.getSocketRoom(socket);
+      if (!roomId) return socket.emit('error_message', 'Not in a game room');
+
+      try {
+        const { playerId } = payload;
+        const identityCheck = antiCheatGuard.verifySocketIdentity(socket, playerId);
+        if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
+
+        const { state: updatedState, log } = await this.gameService.devForceCrash(roomId, playerId);
+        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
+      } catch (err: any) {
+        logger.error(`Error in dev_force_crash for room ${roomId}`, err);
+        socket.emit('error_message', err.message || 'Validation error');
+      }
+    });
+
+    // --- 5.10 Dev Set Next Crash Event ---
+    socket.on('dev_set_next_crash', async (payload: any) => {
+      const roomId = this.getSocketRoom(socket);
+      if (!roomId) return socket.emit('error_message', 'Not in a game room');
+
+      try {
+        const { playerId, delayMinutes } = payload;
+        const identityCheck = antiCheatGuard.verifySocketIdentity(socket, playerId);
+        if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
+
+        const { state: updatedState, log } = await this.gameService.devSetNextCrash(roomId, playerId, delayMinutes);
+        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
+      } catch (err: any) {
+        logger.error(`Error in dev_set_next_crash for room ${roomId}`, err);
+        socket.emit('error_message', err.message || 'Validation error');
+      }
+    });
+
     // --- 7. Respond To Trade Event ---
     socket.on('respond_to_trade', async (payload: any) => {
       const roomId = this.getSocketRoom(socket);
@@ -610,6 +673,17 @@ export class GameController {
 
         if (offer.receiverId !== playerId) {
           return socket.emit('error_message', 'Unauthorized. You are not the receiver of this trade.');
+        }
+
+        const state = await this.gameService.getRoomState(roomId);
+        if (!state) return socket.emit('error_message', 'Game session not found.');
+
+        if (state.settings.jailLoss) {
+          if (state.players[offer.senderId]?.inJail || state.players[offer.receiverId]?.inJail) {
+            delete activeTrades[tradeId];
+            this.io.to(roomId).emit('trade_resolved', { tradeId });
+            return socket.emit('error_message', 'Jail Loss: Trade cancelled because a participant is in jail.');
+          }
         }
 
         // Clean trade record
@@ -775,7 +849,11 @@ export class GameController {
   private getSocketRoom(socket: Socket): string | null {
     // Standard approach: socket rooms contains socket ID itself and any room channels joined
     const rooms = Array.from(socket.rooms).filter((r) => r !== socket.id);
-    return rooms.length > 0 ? rooms[0] : null;
+    if (rooms.length > 0) {
+      this.touchRoom(rooms[0]);
+      return rooms[0];
+    }
+    return null;
   }
 
   /**

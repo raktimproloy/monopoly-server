@@ -83,11 +83,19 @@ export function executeMovement(
   // Check if passed GO
   if (newPosition < oldPosition) {
     if (newPosition === 0) {
-      player.balance += 300;
-      description += ` ➡️ GO তে থেমে ৳300 বোনাস!`;
+      if (newState.marketCrash?.active) {
+        description += ` ➡️ GO তে থেমে ৳0 বোনাস (মার্কেট ক্র্যাশ)!`;
+      } else {
+        player.balance += 300;
+        description += ` ➡️ GO তে থেমে ৳300 বোনাস!`;
+      }
     } else {
-      player.balance += 200;
-      description += generateLog('goCollected', { oldPos: oldPosition, newPos: newPosition });
+      if (newState.marketCrash?.active) {
+        description += ` (মার্কেট ক্র্যাশের জন্য GO বোনাস নেই)`;
+      } else {
+        player.balance += 200;
+        description += generateLog('goCollected', { oldPos: oldPosition, newPos: newPosition });
+      }
     }
   } else {
     description += generateLog('movedTo', { tileName: boardTiles[newPosition]?.name || 'tile' });
@@ -136,6 +144,18 @@ export function executeMovement(
 
   // Draw Card Logic (Chance / Chest)
   if (destTile.type === 'CHANCE' || destTile.type === 'CHEST') {
+    if (newState.marketCrash?.active) {
+      newState.drawnCard = {
+        type: destTile.type,
+        text: 'মার্কেট বন্ধ! মার্কেট ক্র্যাশ চলায় এই কার্ডের কোনো মূল্য নেই।',
+        action: 'NONE'
+      };
+      description += ` ➡️ কার্ড তুলেছেন।`;
+      nextAction = 'RESOLVE_CARD';
+      newState.turnStatus = 'MUST_RESOLVE_CARD';
+      return { newState, description, nextAction };
+    }
+
     const deckType = destTile.type === 'CHANCE' ? 'chance' : 'communityChest';
     const card = drawCard(deckType);
     
@@ -166,11 +186,17 @@ export function executeMovement(
       nextAction = 'BUY_PROPERTY';
       description += generateLog('landedUnownedProperty', { tileName: destTile.name, price: destTile.price });
     } else if (propState.ownerId !== playerId && !propState.isMortgaged) {
-      // Owned by someone else, and not mortgaged -> Rent is due
-      nextAction = 'PAY_RENT';
-      rentDuePlayerId = propState.ownerId;
-      
-      // Calculate Rent
+      // Owned by someone else, and not mortgaged
+      const owner = newState.players[propState.ownerId];
+
+      if (newState.settings.jailLoss && owner?.inJail) {
+        // Owner is in jail and jailLoss rule is active -> No rent
+        description += ` ➡️ ${owner.name} জেলে থাকায় কোনো রেন্ট দিতে হলো না! (Jail Loss)`;
+      } else {
+        nextAction = 'PAY_RENT';
+        rentDuePlayerId = propState.ownerId;
+        
+        // Calculate Rent
       if (destTile.type === 'STREET') {
         const houses = propState.houses;
         rentAmount = destTile.rent ? destTile.rent[houses] : 0;
@@ -201,11 +227,15 @@ export function executeMovement(
       }
 
       if (rentAmount && rentAmount > 0) {
+        if (newState.marketCrash?.active) {
+          rentAmount = Math.ceil(rentAmount * 1.40);
+        }
         description += generateLog('landedOwnedPropertyRentDue', {
           tileName: destTile.name,
           ownerName: newState.players[propState.ownerId]?.name || 'another player',
           rentAmount
         });
+      }
       }
     } else if (propState.ownerId === playerId) {
       description += generateLog('landedOwned', { tileName: destTile.name });

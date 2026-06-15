@@ -1,6 +1,7 @@
 import { db } from '../config/database';
 import { GameState, Player, BoardTile, GameSettings } from '../../../shared/types';
 import { logger } from '../utils/logger';
+import { MarketCrashService } from './market_crash.service';
 
 // In-memory fallback database for out-of-the-box local testing if PG connection is unavailable
 export const memoryRooms: Record<string, { state: GameState; version: number; templateId: number }> = {};
@@ -147,7 +148,8 @@ export class RoomService {
       doubleRentOnCompleteSet: true,
       freeParkingCashPool: false,
       allowUnpurchasedAuction: true,
-      allowMortgage: true
+      allowMortgage: true,
+      jailLoss: false
     };
 
     initialPlayers.forEach((p) => {
@@ -176,7 +178,13 @@ export class RoomService {
       winnerId: null,
       turnStatus: 'MUST_ROLL',
       settings: defaultSettings,
-      freeParkingPool: 0
+      freeParkingPool: 0,
+      marketCrash: {
+        active: false,
+        nextCrashTime: null,
+        crashEndTime: null,
+        crashCount: 0
+      }
     };
 
     if (stateFlags.useMemoryFallback) {
@@ -295,7 +303,7 @@ export class RoomService {
       newState.players[pId].balance = settings.startingCash;
     });
 
-    const log = `গেমের নিয়ম পরিবর্তন করা হয়েছে: প্রারম্ভিক টাকা ৳${settings.startingCash}, ডাবল ভাড়া: ${settings.doubleRentOnCompleteSet ? 'হ্যাঁ' : 'না'}, ফ্রি পার্কিং পুল: ${settings.freeParkingCashPool ? 'হ্যাঁ' : 'না'}, নিলাম: ${settings.allowUnpurchasedAuction ? 'হ্যাঁ' : 'না'}, মর্টগেজ: ${settings.allowMortgage ? 'হ্যাঁ' : 'না'}।`;
+    const log = `গেমের নিয়ম পরিবর্তন করা হয়েছে: প্রারম্ভিক টাকা ৳${settings.startingCash}, ডাবল ভাড়া: ${settings.doubleRentOnCompleteSet ? 'হ্যাঁ' : 'না'}, ফ্রি পার্কিং পুল: ${settings.freeParkingCashPool ? 'হ্যাঁ' : 'না'}, নিলাম: ${settings.allowUnpurchasedAuction ? 'হ্যাঁ' : 'না'}, মর্টগেজ: ${settings.allowMortgage ? 'হ্যাঁ' : 'না'}, জেল লস: ${settings.jailLoss ? 'হ্যাঁ' : 'না'}।`;
 
     const resultState = await this.updateRoomState(
       roomId,
@@ -343,9 +351,12 @@ export class RoomService {
     newState.gameStatus = 'ACTIVE';
     newState.turnStatus = 'MUST_ROLL';
 
+    // Initialize first market crash timer
+    const { newState: stateWithCrash } = MarketCrashService.scheduleNextCrash(newState);
+
     const resultState = await this.updateRoomState(
       roomId,
-      newState,
+      stateWithCrash,
       playerId,
       'START_GAME',
       {},

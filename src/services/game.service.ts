@@ -3,6 +3,7 @@ import { PropertyService } from './property.service';
 import { TradeService } from './trade.service';
 import { ActionService } from './action.service';
 import { PardonService } from './pardon.service';
+import { MarketCrashService } from './market_crash.service';
 import { GameState, TradeOfferPayload, BoardTile } from '../../../shared/types';
 
 export class GameService {
@@ -214,5 +215,48 @@ export class GameService {
    */
   async deleteRoom(roomId: string): Promise<void> {
     return this.roomService.deleteRoom(roomId);
+  }
+
+  /**
+   * DEV: Forces a market crash immediately.
+   */
+  async devForceCrash(roomId: string, playerId: string): Promise<{ state: GameState; log: string }> {
+    const state = await this.roomService.getRoomState(roomId);
+    if (!state) throw new Error('Room not found');
+    const { newState, log } = MarketCrashService.forceCrash(state);
+    return {
+      state: await this.roomService.updateRoomState(roomId, newState, playerId, 'DEV_FORCE_CRASH', {}, log),
+      log
+    };
+  }
+
+  /**
+   * DEV: Sets the time until the next market crash.
+   */
+  async devSetNextCrash(roomId: string, playerId: string, delayMinutes: number): Promise<{ state: GameState; log: string }> {
+    const state = await this.roomService.getRoomState(roomId);
+    if (!state) throw new Error('Room not found');
+    const { newState, log } = MarketCrashService.devSetNextCrash(state, delayMinutes);
+    return {
+      state: await this.roomService.updateRoomState(roomId, newState, playerId, 'DEV_SET_NEXT_CRASH', { delayMinutes }, log),
+      log
+    };
+  }
+
+  /**
+   * Processes market crash timers and transitions. Returns updated state if changed.
+   */
+  async processMarketCrashTimers(roomId: string): Promise<{ state: GameState; log: string } | null> {
+    const state = await this.roomService.getRoomState(roomId);
+    if (!state || state.gameStatus !== 'ACTIVE') return null;
+
+    const { newState, log, changed } = MarketCrashService.processTimers(state);
+    if (changed) {
+      return {
+        state: await this.roomService.updateRoomState(roomId, newState, 'SYSTEM', 'MARKET_CRASH_UPDATE', {}, log),
+        log
+      };
+    }
+    return null;
   }
 }

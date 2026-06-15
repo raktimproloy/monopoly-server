@@ -38,7 +38,11 @@ export function canBuyProperty(
   }
 
   // 5. Check balance
-  const cost = tile.price || 0;
+  let cost = tile.price || 0;
+  if (state.marketCrash?.active) {
+    cost = Math.floor(cost * 0.7);
+  }
+
   if (player.balance < cost) {
     return { valid: false, error: `Insufficient balance. Property costs ৳${cost}, you have ৳${player.balance}.` };
   }
@@ -58,7 +62,11 @@ export function buyProperty(
   const newState = JSON.parse(JSON.stringify(state)) as GameState;
   const player = newState.players[playerId];
   const tile = boardTiles[tileIndex];
-  const cost = tile.price || 0;
+  let cost = tile.price || 0;
+
+  if (newState.marketCrash?.active) {
+    cost = Math.floor(cost * 0.7);
+  }
 
   // Deduct balance
   player.balance -= cost;
