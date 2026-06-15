@@ -242,7 +242,7 @@ export class RoomService {
       .map(p => p.avatar.toLowerCase());
 
     if (takenColors.includes(player.avatar.toLowerCase())) {
-      const AVATAR_COLORS = ['#8BA4F9', '#D8B4F8', '#F98BA4', '#A4F98B'];
+      const AVATAR_COLORS = ['#6366f1', '#f43f5e', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4', '#ec4899', '#d946ef'];
       const available = AVATAR_COLORS.find(col => !takenColors.includes(col.toLowerCase()));
       if (available) {
         player.avatar = available;

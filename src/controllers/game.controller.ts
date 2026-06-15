@@ -177,7 +177,7 @@ export class GameController {
         }
         const botId = `bot_${Math.random().toString(36).substring(2, 9)}`;
         const botName = `Bot ${Object.keys(state.players).length}`;
-        const AVATAR_COLORS = ['#8BA4F9', '#D8B4F8', '#F98BA4', '#A4F98B'];
+        const AVATAR_COLORS = ['#6366f1', '#f43f5e', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4', '#ec4899', '#d946ef'];
         const botAvatar = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
         
         const updatedState = await this.gameService.joinRoom(roomId, {
