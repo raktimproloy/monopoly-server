@@ -4,7 +4,7 @@ import { drawCard, generateLog } from '../utils/logGenerator';
 export interface MovementResult {
   newState: GameState;
   description: string;
-  nextAction: 'BUY_PROPERTY' | 'PAY_RENT' | 'NONE' | 'RESOLVE_CARD';
+  nextAction: 'BUY_PROPERTY' | 'PAY_RENT' | 'NONE' | 'RESOLVE_CARD' | 'AUTO_END_TURN';
   rentDuePlayerId?: string;
   rentAmount?: number;
 }
@@ -91,9 +91,9 @@ export function executeMovement(
     }
 
     if (passedPolice) {
-      const isBigReason = Math.random() < 0.15; // 15% chance to go to jail
+      const isBigReason = Math.random() < 0.10; // 10% chance to go to jail
       if (isBigReason) {
-        description += ` 🚓 ট্রাফিক পুলিশের হাতে ধরা! পুলিশ অফিসারের গায়ে গাড়ি তুলে দেয়ার চেষ্টায় সোজা জেলে!`;
+        description += ` 🚓 ট্রাফিক পুলিশের হাতে ধরা! পুলিশ অফিসারের গায়ে গাড়ি তুলে দেয়ার চেষ্টায় সোজা জেলে! (কোনো জরিমানা নেই)`;
         player.inJail = true;
         player.jailTurns = 0;
         player.position = 10;
@@ -200,12 +200,14 @@ export function executeMovement(
 
   if (destTile.type === 'FREE_PARKING') {
     player.skipTurns = (player.skipTurns || 0) + 1;
-    description += ` ➡️ ফ্রি পার্কিং!`;
+    newState.doubleRollCount = 0; // Cancel any double roll
+    description += ` ➡️ ফ্রি পার্কিং! (পরবর্তী দান বন্ধ)`;
     if (newState.settings.freeParkingCashPool && (newState.freeParkingPool || 0) > 0) {
       player.balance += (newState.freeParkingPool || 0);
       description += ` (+৳${newState.freeParkingPool})`;
       newState.freeParkingPool = 0;
     }
+    nextAction = 'NONE';
   }
 
   // Draw Card Logic (Chance / Chest)
@@ -337,6 +339,8 @@ export function executeMovement(
   } else if (nextAction === 'PAY_RENT') {
     newState.turnStatus = 'BANKRUPTCY_PENDING'; // player must resolve rent before turn actions
   } else if (nextAction === 'BUY_PROPERTY') {
+    newState.turnStatus = 'MUST_ACT_OR_END';
+  } else if (nextAction === 'AUTO_END_TURN') {
     newState.turnStatus = 'MUST_ACT_OR_END';
   }
 

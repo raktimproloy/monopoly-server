@@ -402,6 +402,16 @@ export class RoomService {
   ): Promise<GameState> {
     logger.game(roomId, actionType, playerId, logMessage);
 
+    // Normalize Turn Status for Negative Balances
+    const currentTurnPlayer = newState.players[newState.currentTurnPlayerId];
+    if (currentTurnPlayer) {
+      if (newState.turnStatus === 'BANKRUPTCY_PENDING' && currentTurnPlayer.balance >= 0) {
+        newState.turnStatus = 'MUST_ACT_OR_END';
+      } else if (newState.turnStatus === 'MUST_ACT_OR_END' && currentTurnPlayer.balance < 0) {
+        newState.turnStatus = 'BANKRUPTCY_PENDING';
+      }
+    }
+
     if (stateFlags.useMemoryFallback) {
       const room = memoryRooms[roomId];
       if (!room) throw new Error(`Room ${roomId} does not exist in memory cache.`);

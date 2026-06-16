@@ -17,6 +17,10 @@ export class ActionService {
     const state = await this.roomService.getRoomState(roomId);
     if (!state) throw new Error(`Game room ${roomId} not found.`);
 
+    if (state.turnStatus !== 'MUST_ROLL') {
+      throw new Error(`Cannot roll dice. Current turn status is ${state.turnStatus}.`);
+    }
+
     const { tiles } = await this.roomService.loadBoardTemplate();
 
     const player = state.players[playerId];
@@ -43,9 +47,9 @@ export class ActionService {
     let finalDescription = initialLog + description;
 
     if (nextAction === 'PAY_RENT' && rentDuePlayerId && rentAmount) {
-      const rentResult = payRent(newState, playerId, rentDuePlayerId, rentAmount);
+      const rentResult = payRent(updatedState, playerId, rentDuePlayerId, rentAmount);
       finalState = rentResult.newState;
-      finalDescription = rentResult.description;
+      finalDescription = finalDescription + ' ' + rentResult.description;
     }
 
     const savedState = await this.roomService.updateRoomState(
@@ -121,7 +125,7 @@ export class ActionService {
     if (nextAction === 'PAY_RENT' && rentDuePlayerId && rentAmount) {
       const rentResult = payRent(newState, playerId, rentDuePlayerId, rentAmount);
       finalState = rentResult.newState;
-      finalDescription = rentResult.description;
+      finalDescription = finalDescription + ' ' + rentResult.description;
     }
 
     const savedState = await this.roomService.updateRoomState(
@@ -132,6 +136,17 @@ export class ActionService {
       { targetIndex },
       finalDescription
     );
+
+    if (nextAction === 'AUTO_END_TURN') {
+      setTimeout(async () => {
+        try {
+          const currentState = await this.roomService.getRoomState(roomId);
+          if (currentState && currentState.currentTurnPlayerId === playerId && currentState.turnStatus === 'MUST_ACT_OR_END') {
+            await this.endTurn(roomId, playerId);
+          }
+        } catch (e) {}
+      }, 2500);
+    }
 
     return { state: savedState, log: finalDescription };
   }
@@ -160,7 +175,7 @@ export class ActionService {
     if (nextAction === 'PAY_RENT' && rentDuePlayerId && rentAmount) {
       const rentResult = payRent(newState, playerId, rentDuePlayerId, rentAmount);
       finalState = rentResult.newState;
-      finalDescription = rentResult.description;
+      finalDescription = finalDescription + ' ' + rentResult.description;
     }
 
     const savedState = await this.roomService.updateRoomState(
@@ -171,6 +186,17 @@ export class ActionService {
       { dice, originalPlayer: playerId },
       finalDescription
     );
+
+    if (nextAction === 'AUTO_END_TURN') {
+      setTimeout(async () => {
+        try {
+          const currentState = await this.roomService.getRoomState(roomId);
+          if (currentState && currentState.currentTurnPlayerId === playerId && currentState.turnStatus === 'MUST_ACT_OR_END') {
+            await this.endTurn(roomId, playerId);
+          }
+        } catch (e) {}
+      }, 2500);
+    }
 
     return { state: savedState, log: finalDescription };
   }
