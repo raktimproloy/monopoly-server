@@ -61,7 +61,7 @@ export const STANDARD_TILES_FALLBACK: BoardTile[] = [
   { index: 2, name: "গুপ্তধন", type: "CHEST" },
   { index: 3, name: "রংপুর (রংপুর)", type: "STREET", price: 60, rent: [4, 20, 60, 180, 320, 450], mortgageValue: 30, houseCost: 50, group: "Brown" },
   { index: 4, name: "আয়কর\n(১০%)", type: "TAX", price: 0 },
-  { index: 5, name: "বরিশাল রেল", type: "RAILROAD", price: 200, rent: [25, 50, 100, 200], mortgageValue: 100 },
+  { index: 5, name: "রংপুর রেল", type: "RAILROAD", price: 200, rent: [25, 50, 100, 200], mortgageValue: 100 },
   { index: 6, name: "বরগুনা (বরিশাল)", type: "STREET", price: 100, rent: [6, 30, 90, 270, 400, 550], mortgageValue: 50, houseCost: 50, group: "Light Blue" },
   { index: 7, name: "ভাগ্য পরীক্ষা", type: "CHANCE" },
   { index: 8, name: "ভোলা (বরিশাল)", type: "STREET", price: 100, rent: [6, 30, 90, 270, 400, 550], mortgageValue: 50, houseCost: 50, group: "Light Blue" },

@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 let logTemplates: Record<string, string> | null = null;
-let cardsData: { chance: any[]; communityChest: any[] } | null = null;
+let cardsData: { cards: any[] } | null = null;
 
 export function loadLogTemplates() {
   if (!logTemplates) {
@@ -36,7 +36,7 @@ export function generateLog(key: string, params: Record<string, any>): string {
   return template;
 }
 
-export function drawCard(type: 'chance' | 'communityChest') {
+export function drawCard() {
   if (!cardsData) {
     try {
       const filePath = path.join(__dirname, '../config/game_data/cards.json');
@@ -44,11 +44,11 @@ export function drawCard(type: 'chance' | 'communityChest') {
       cardsData = JSON.parse(data);
     } catch (err) {
       console.error('Failed to load cards.json', err);
-      cardsData = { chance: [], communityChest: [] };
+      cardsData = { cards: [] };
     }
   }
 
-  const deck = cardsData![type];
+  const deck = cardsData!.cards;
   if (!deck || deck.length === 0) return null;
 
   const randomIndex = Math.floor(Math.random() * deck.length);

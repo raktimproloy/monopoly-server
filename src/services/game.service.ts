@@ -4,6 +4,7 @@ import { TradeService } from './trade.service';
 import { ActionService } from './action.service';
 import { PardonService } from './pardon.service';
 import { MarketCrashService } from './market_crash.service';
+import { TrafficPoliceService } from './traffic_police.service';
 import { BankService } from './bank.service';
 import { GameState, TradeOfferPayload, BoardTile } from '../../../shared/types';
 
@@ -261,17 +262,62 @@ export class GameService {
   }
 
   /**
-   * Processes market crash timers and transitions. Returns updated state if changed.
+   * DEV: Forces the traffic police to spawn immediately.
    */
-  async processMarketCrashTimers(roomId: string): Promise<{ state: GameState; log: string } | null> {
+  async devForcePolice(roomId: string, playerId: string): Promise<{ state: GameState; log: string }> {
+    const state = await this.roomService.getRoomState(roomId);
+    if (!state) throw new Error('Room not found');
+    const { tiles } = await this.loadBoardTemplate();
+    const { newState, log } = TrafficPoliceService.devForcePolice(state, tiles);
+    return {
+      state: await this.roomService.updateRoomState(roomId, newState, playerId, 'DEV_FORCE_POLICE', {}, log),
+      log
+    };
+  }
+
+  /**
+   * DEV: Sets the time until the next traffic police spawns.
+   */
+  async devSetNextPolice(roomId: string, playerId: string, delayMinutes: number): Promise<{ state: GameState; log: string }> {
+    const state = await this.roomService.getRoomState(roomId);
+    if (!state) throw new Error('Room not found');
+    const { newState, log } = TrafficPoliceService.devSetNextPolice(state, delayMinutes);
+    return {
+      state: await this.roomService.updateRoomState(roomId, newState, playerId, 'DEV_SET_NEXT_POLICE', { delayMinutes }, log),
+      log
+    };
+  }
+
+  /**
+   * Processes market crash and traffic police timers and transitions. Returns updated state if changed.
+   */
+  async processGameTimers(roomId: string): Promise<{ state: GameState; log: string } | null> {
     const state = await this.roomService.getRoomState(roomId);
     if (!state || state.gameStatus !== 'ACTIVE') return null;
 
-    const { newState, log, changed } = MarketCrashService.processTimers(state);
-    if (changed) {
+    let currentState = state;
+    let anyChanged = false;
+    let combinedLog = '';
+
+    const { newState: crashState, log: crashLog, changed: crashChanged } = MarketCrashService.processTimers(currentState);
+    if (crashChanged) {
+      currentState = crashState;
+      anyChanged = true;
+      combinedLog += crashLog + ' ';
+    }
+
+    const { tiles } = await this.loadBoardTemplate();
+    const { newState: policeState, log: policeLog, changed: policeChanged } = TrafficPoliceService.processTimers(currentState, tiles);
+    if (policeChanged) {
+      currentState = policeState;
+      anyChanged = true;
+      combinedLog += policeLog + ' ';
+    }
+
+    if (anyChanged) {
       return {
-        state: await this.roomService.updateRoomState(roomId, newState, 'SYSTEM', 'MARKET_CRASH_UPDATE', {}, log),
-        log
+        state: await this.roomService.updateRoomState(roomId, currentState, 'SYSTEM', 'TIMER_UPDATE', {}, combinedLog.trim()),
+        log: combinedLog.trim()
       };
     }
     return null;

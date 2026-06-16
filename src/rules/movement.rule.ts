@@ -80,6 +80,43 @@ export function executeMovement(
   const newPosition = (oldPosition + d1 + d2) % totalTiles;
   player.position = newPosition;
 
+  // 3.5 Traffic Police Check
+  if (newState.trafficPolice?.active && newState.trafficPolice.position !== null && !wasInJail) {
+    const policePos = newState.trafficPolice.position;
+    let passedPolice = false;
+    if (newPosition >= oldPosition) {
+      if (policePos > oldPosition && policePos <= newPosition) passedPolice = true;
+    } else {
+      if (policePos > oldPosition || policePos <= newPosition) passedPolice = true;
+    }
+
+    if (passedPolice) {
+      const isBigReason = Math.random() < 0.15; // 15% chance to go to jail
+      if (isBigReason) {
+        description += ` 🚓 ট্রাফিক পুলিশের হাতে ধরা! পুলিশ অফিসারের গায়ে গাড়ি তুলে দেয়ার চেষ্টায় সোজা জেলে!`;
+        player.inJail = true;
+        player.jailTurns = 0;
+        player.position = 10;
+        newState.doubleRollCount = 0;
+        newState.turnStatus = 'MUST_ACT_OR_END';
+        return { newState, description, nextAction: 'NONE' };
+      } else {
+        const fineAmount = Math.floor(Math.random() * (80 - 30 + 1)) + 30;
+        const reasons = [
+          "হেলমেট না থাকায়",
+          "ওভারস্পিডিং এর জন্য",
+          "সিগন্যাল অমান্য করায়",
+          "রং সাইডে ড্রাইভ করায়",
+          "ড্রাইভিং লাইসেন্স না থাকায়"
+        ];
+        const reason = reasons[Math.floor(Math.random() * reasons.length)];
+        player.balance -= fineAmount;
+        newState.governmentBank.balance += fineAmount;
+        description += ` 🚓 ট্রাফিক পুলিশের হাতে ধরা! ${reason} ৳${fineAmount} জরিমানা।`;
+      }
+    }
+  }
+
   // Check if passed GO
   if (newPosition < oldPosition) {
     if (newPosition === 0) {
@@ -185,19 +222,7 @@ export function executeMovement(
       return { newState, description, nextAction };
     }
 
-    const deckType = destTile.type === 'CHANCE' ? 'chance' : 'communityChest';
-    let card = drawCard(deckType);
-    
-    // Rare Don Card Logic
-    if (!newState.donCardDrawn && Math.random() < 0.05) { // 5% chance
-      card = {
-        id: 'power_don',
-        text: 'BECOME A DON! আপনি একটি স্পেশাল পাওয়ার কার্ড পেয়েছেন। এটি ব্যবহার করে অন্য কারও একটি সম্পত্তি ৩ দানের জন্য দখল করতে পারবেন।',
-        action: 'BECOME_A_DON',
-        isSecret: true
-      };
-      newState.donCardDrawn = true;
-    }
+    let card = drawCard();
 
     if (card) {
       newState.drawnCard = {

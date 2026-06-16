@@ -247,11 +247,7 @@ export class ActionService {
 
     const nextPlayerId = newState.playerOrder[nextIndex];
     newState.currentTurnPlayerId = nextPlayerId;
-    if (newState.players[nextPlayerId].inJail) {
-      newState.turnStatus = 'MUST_ACT_OR_END';
-    } else {
-      newState.turnStatus = 'MUST_ROLL';
-    }
+    newState.turnStatus = 'MUST_ROLL';
     newState.doubleRollCount = 0;
     newState.dice = [0, 0]; // reset dice visually for next player
 

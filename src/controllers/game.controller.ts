@@ -39,25 +39,25 @@ export class GameController {
 
     // Start periodic room cleanup sweep every 5 minutes
     setInterval(() => this.cleanupInactiveRooms(), 5 * 60 * 1000);
-    // Start market crash ticker every 5 seconds
-    setInterval(() => this.tickMarketCrashRooms(), 5 * 1000);
+    // Start game timer ticker every 5 seconds (market crash, police, etc)
+    setInterval(() => this.tickGameTimers(), 5 * 1000);
     logger.info('Room lifecycle manager initialized (TTL: 30min inactivity, 5min post-finish)');
   }
 
   /**
-   * Processes market crash timers for all active rooms.
+   * Processes all game timers (market crash, traffic police) for all active rooms.
    */
-  private async tickMarketCrashRooms() {
+  private async tickGameTimers() {
     const roomIds = Object.keys(roomActivity);
     for (const roomId of roomIds) {
       try {
-        const result = await this.gameService.processMarketCrashTimers(roomId);
+        const result = await this.gameService.processGameTimers(roomId);
         if (result) {
           this.io.to(roomId).emit('state_updated', { state: result.state, log: result.log });
           this.processBotTurn(roomId, result.state);
         }
       } catch (err) {
-        logger.error(`Error processing market crash timers for room ${roomId}`, err);
+        logger.error(`Error processing game timers for room ${roomId}`, err);
       }
     }
   }
@@ -689,6 +689,38 @@ export class GameController {
         this.io.to(roomId).emit('state_updated', { state: updatedState, log });
       } catch (err: any) {
         logger.error(`Error in use_power_card for room ${roomId}`, err);
+        socket.emit('error_message', err.message || 'Validation error');
+      }
+    });
+
+    socket.on('dev_force_police', async (payload: any) => {
+      const roomId = this.getSocketRoom(socket);
+      if (!roomId) return socket.emit('error_message', 'Not in a game room');
+      try {
+        const { playerId } = payload;
+        const identityCheck = antiCheatGuard.verifySocketIdentity(socket, playerId);
+        if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
+        
+        const { state: updatedState, log } = await this.gameService.devForcePolice(roomId, playerId);
+        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
+      } catch (err: any) {
+        logger.error(`Error in dev_force_police for room ${roomId}`, err);
+        socket.emit('error_message', err.message || 'Validation error');
+      }
+    });
+
+    socket.on('dev_set_next_police', async (payload: any) => {
+      const roomId = this.getSocketRoom(socket);
+      if (!roomId) return socket.emit('error_message', 'Not in a game room');
+      try {
+        const { playerId, delayMinutes } = payload;
+        const identityCheck = antiCheatGuard.verifySocketIdentity(socket, playerId);
+        if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
+
+        const { state: updatedState, log } = await this.gameService.devSetNextPolice(roomId, playerId, delayMinutes);
+        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
+      } catch (err: any) {
+        logger.error(`Error in dev_set_next_police for room ${roomId}`, err);
         socket.emit('error_message', err.message || 'Validation error');
       }
     });
