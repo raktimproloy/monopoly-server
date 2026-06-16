@@ -57,14 +57,14 @@ export let stateFlags = {
 // Bangladesh Division-District Board Configuration (Updated with unique names)
 export const STANDARD_TILES_FALLBACK: BoardTile[] = [
   { index: 0, name: "শুরু", type: "START" },
-  { index: 1, name: "দিনাজপুর (রংপুর)", type: "STREET", price: 60, rent: [2, 10, 30, 90, 160, 250], mortgageValue: 30, houseCost: 50, group: "Brown" },
+  { index: 1, name: "পঞ্চগড় (রংপুর)", type: "STREET", price: 60, rent: [2, 10, 30, 90, 160, 250], mortgageValue: 30, houseCost: 50, group: "Brown" },
   { index: 2, name: "গুপ্তধন", type: "CHEST" },
   { index: 3, name: "রংপুর (রংপুর)", type: "STREET", price: 60, rent: [4, 20, 60, 180, 320, 450], mortgageValue: 30, houseCost: 50, group: "Brown" },
   { index: 4, name: "আয়কর\n(১০%)", type: "TAX", price: 0 },
   { index: 5, name: "বরিশাল রেল", type: "RAILROAD", price: 200, rent: [25, 50, 100, 200], mortgageValue: 100 },
   { index: 6, name: "বরগুনা (বরিশাল)", type: "STREET", price: 100, rent: [6, 30, 90, 270, 400, 550], mortgageValue: 50, houseCost: 50, group: "Light Blue" },
   { index: 7, name: "ভাগ্য পরীক্ষা", type: "CHANCE" },
-  { index: 8, name: "পটুয়াখালী (বরিশাল)", type: "STREET", price: 100, rent: [6, 30, 90, 270, 400, 550], mortgageValue: 50, houseCost: 50, group: "Light Blue" },
+  { index: 8, name: "ভোলা (বরিশাল)", type: "STREET", price: 100, rent: [6, 30, 90, 270, 400, 550], mortgageValue: 50, houseCost: 50, group: "Light Blue" },
   { index: 9, name: "বরিশাল (বরিশাল)", type: "STREET", price: 120, rent: [8, 40, 100, 300, 450, 600], mortgageValue: 60, houseCost: 50, group: "Light Blue" },
   { index: 10, name: "জেল", type: "JAIL" },
   { index: 11, name: "যশোর (খুলনা)", type: "STREET", price: 140, rent: [10, 50, 150, 450, 625, 750], mortgageValue: 70, houseCost: 100, group: "Pink" },
@@ -77,13 +77,13 @@ export const STANDARD_TILES_FALLBACK: BoardTile[] = [
   { index: 18, name: "নাটোর (রাজশাহী)", type: "STREET", price: 180, rent: [14, 70, 200, 550, 750, 950], mortgageValue: 90, houseCost: 100, group: "Orange" },
   { index: 19, name: "রাজশাহী (রাজশাহী)", type: "STREET", price: 200, rent: [16, 80, 220, 600, 800, 1000], mortgageValue: 100, houseCost: 100, group: "Orange" },
   { index: 20, name: "অবসর", type: "FREE_PARKING" },
-  { index: 21, name: "সুনামগঞ্জ (সিলেট)", type: "STREET", price: 220, rent: [18, 90, 250, 700, 875, 1050], mortgageValue: 110, houseCost: 150, group: "Red" },
+  { index: 21, name: "শ্রীমঙ্গল (সিলেট)", type: "STREET", price: 220, rent: [18, 90, 250, 700, 875, 1050], mortgageValue: 110, houseCost: 150, group: "Red" },
   { index: 22, name: "ভাগ্য পরীক্ষা", type: "CHANCE" },
   { index: 23, name: "হবিগঞ্জ (সিলেট)", type: "STREET", price: 220, rent: [18, 90, 250, 700, 875, 1050], mortgageValue: 110, houseCost: 150, group: "Red" },
   { index: 24, name: "সিলেট (সিলেট)", type: "STREET", price: 240, rent: [20, 100, 300, 750, 925, 1100], mortgageValue: 120, houseCost: 150, group: "Red" },
   { index: 25, name: "সিলেট রেল", type: "RAILROAD", price: 200, rent: [25, 50, 100, 200], mortgageValue: 100 },
   { index: 26, name: "কুমিল্লা (চট্টগ্রাম)", type: "STREET", price: 260, rent: [22, 110, 330, 800, 975, 1150], mortgageValue: 130, houseCost: 150, group: "Yellow" },
-  { index: 27, name: "নোয়াখালী (চট্টগ্রাম)", type: "STREET", price: 260, rent: [22, 110, 330, 800, 975, 1150], mortgageValue: 130, houseCost: 150, group: "Yellow" },
+  { index: 27, name: "লক্ষ্মীপুর (চট্টগ্রাম)", type: "STREET", price: 260, rent: [22, 110, 330, 800, 975, 1150], mortgageValue: 130, houseCost: 150, group: "Yellow" },
   { index: 28, name: "পানি সরবরাহ", type: "UTILITY", price: 150, rent: [4, 10], mortgageValue: 75 },
   { index: 29, name: "চট্টগ্রাম (চট্টগ্রাম)", type: "STREET", price: 280, rent: [24, 120, 360, 850, 1025, 1200], mortgageValue: 140, houseCost: 150, group: "Yellow" },
   { index: 30, name: "জেলে যাও", type: "GO_TO_JAIL" },
@@ -179,11 +179,16 @@ export class RoomService {
       turnStatus: 'MUST_ROLL',
       settings: defaultSettings,
       freeParkingPool: 0,
+      activeAuction: undefined,
+      drawnCard: null,
       marketCrash: {
         active: false,
         nextCrashTime: null,
         crashEndTime: null,
         crashCount: 0
+      },
+      governmentBank: {
+        balance: Math.floor(Math.random() * (1500000 - 700000 + 1)) + 700000
       }
     };
 

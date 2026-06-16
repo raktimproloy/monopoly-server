@@ -19,20 +19,28 @@ export class ActionService {
 
     const { tiles } = await this.roomService.loadBoardTemplate();
 
+    const player = state.players[playerId];
+    if (!player) throw new Error(`Player ${playerId} not found.`);
+
+    const newState = JSON.parse(JSON.stringify(state)) as GameState;
+    const pState = newState.players[playerId];
+    let initialLog = '';
+
+
     const dice: [number, number] = [
       Math.floor(Math.random() * 6) + 1,
       Math.floor(Math.random() * 6) + 1
     ];
 
-    const { newState, description, nextAction, rentDuePlayerId, rentAmount } = executeMovement(
-      state,
+    const { newState: updatedState, description, nextAction, rentDuePlayerId, rentAmount } = executeMovement(
+      newState,
       playerId,
       dice,
       tiles
     );
 
-    let finalState = newState;
-    let finalDescription = description;
+    let finalState = updatedState;
+    let finalDescription = initialLog + description;
 
     if (nextAction === 'PAY_RENT' && rentDuePlayerId && rentAmount) {
       const rentResult = payRent(newState, playerId, rentDuePlayerId, rentAmount);
@@ -247,6 +255,15 @@ export class ActionService {
     newState.doubleRollCount = 0;
     newState.dice = [0, 0]; // reset dice visually for next player
 
+    // Don Power Expiration Logic
+    if (newState.activeDonPower) {
+      newState.activeDonPower.remainingRounds -= 1;
+      if (newState.activeDonPower.remainingRounds <= 0) {
+        description += ` 🚔 Don power expired! The property has been returned to its original owner.`;
+        newState.activeDonPower = null;
+      }
+    }
+
     description += generateLog('turnEnded', {
       playerName: player.name,
       nextPlayerName: newState.players[nextPlayerId].name
@@ -385,6 +402,7 @@ export class ActionService {
     pState.inJail = false;
     pState.jailTurns = 0;
     pState.balance -= 50;
+    newState.governmentBank.balance += 50;
     if (newState.settings.freeParkingCashPool) {
       newState.freeParkingPool = (newState.freeParkingPool || 0) + 50;
     }
@@ -468,9 +486,11 @@ export class ActionService {
     switch (card.action) {
       case 'ADD_MONEY':
         player.balance += (card.value || 0);
+        newState.governmentBank.balance -= (card.value || 0);
         break;
       case 'DEDUCT_MONEY':
         player.balance -= (card.value || 0);
+        newState.governmentBank.balance += (card.value || 0);
         if (newState.settings.freeParkingCashPool) {
           newState.freeParkingPool = (newState.freeParkingPool || 0) + (card.value || 0);
         }
@@ -488,9 +508,11 @@ export class ActionService {
           if (newPos < player.position) {
             if (newPos === 0) {
               player.balance += 300;
+              newState.governmentBank.balance -= 300;
               description += ` এবং ঠিক 'শুরু' (GO) ঘরে এসে থেমেছেন, তাই ৳300 বোনাস পেয়েছেন।`;
             } else {
               player.balance += 200; // Passed GO
+              newState.governmentBank.balance -= 200;
               description += generateLog('movedTo', { tileName: boardTiles[newPos]?.name || 'tile' });
             }
           } else {
@@ -501,6 +523,10 @@ export class ActionService {
         break;
       case 'GET_OUT_OF_JAIL_FREE':
         player.getOutOfJailFreeCards = (player.getOutOfJailFreeCards || 0) + 1;
+        break;
+      case 'BECOME_A_DON':
+        player.powerCards = player.powerCards || [];
+        player.powerCards.push('BECOME_A_DON');
         break;
     }
 
@@ -520,6 +546,98 @@ export class ActionService {
       playerId,
       'RESOLVE_CARD',
       { cardAction: card.action },
+      description
+    );
+
+    return { state: savedState, log: description };
+  }
+
+  /**
+   * DEV: Gives a specific power card to a player.
+   */
+  async devGivePowerCard(roomId: string, playerId: string, cardType: string): Promise<{ state: GameState; log: string }> {
+    const state = await this.roomService.getRoomState(roomId);
+    if (!state) throw new Error(`Game room ${roomId} not found.`);
+
+    const newState = JSON.parse(JSON.stringify(state)) as GameState;
+    const player = newState.players[playerId];
+    
+    if (!player) throw new Error(`Player ${playerId} not found.`);
+
+    player.powerCards = player.powerCards || [];
+    player.powerCards.push(cardType);
+
+    const description = `🔧 DEV: ${player.name} has been granted the ${cardType} power card.`;
+
+    const savedState = await this.roomService.updateRoomState(
+      roomId,
+      newState,
+      playerId,
+      'DEV_GIVE_POWER_CARD',
+      { cardType },
+      description
+    );
+
+    return { state: savedState, log: description };
+  }
+
+  /**
+   * Uses a power card.
+   */
+  async usePowerCard(roomId: string, playerId: string, cardType: string, payload: any): Promise<{ state: GameState; log: string }> {
+    const state = await this.roomService.getRoomState(roomId);
+    if (!state) throw new Error(`Game room ${roomId} not found.`);
+
+    const newState = JSON.parse(JSON.stringify(state)) as GameState;
+    const player = newState.players[playerId];
+    
+    if (!player) throw new Error(`Player ${playerId} not found.`);
+    if (!player.powerCards || !player.powerCards.includes(cardType)) {
+      throw new Error(`You do not have the ${cardType} card.`);
+    }
+
+    let description = '';
+
+    if (cardType === 'BECOME_A_DON') {
+      const targetTileIndex = payload.targetTileIndex;
+      const targetProperty = newState.properties[targetTileIndex];
+
+      if (!targetProperty || !targetProperty.ownerId) {
+        throw new Error('Target property is not owned by anyone.');
+      }
+      if (targetProperty.ownerId === playerId) {
+        throw new Error('You cannot hijack your own property.');
+      }
+
+      // Remove card
+      const cardIndex = player.powerCards.indexOf(cardType);
+      player.powerCards.splice(cardIndex, 1);
+
+      // Active players count for calculating 3 full rounds (activePlayers * 3 turns)
+      const activePlayers = Object.values(newState.players).filter(p => !p.isBankrupt).length;
+      const totalTurns = activePlayers * 3;
+
+      newState.activeDonPower = {
+        donPlayerId: playerId,
+        targetTileIndex: targetTileIndex,
+        originalOwnerId: targetProperty.ownerId,
+        remainingRounds: totalTurns
+      };
+
+      const { tiles } = await this.roomService.loadBoardTemplate();
+      const tileName = tiles.find(t => t.index === targetTileIndex)?.name || 'a property';
+
+      description = `🕴️ ${player.name} has become a Don! They hijacked ${tileName} for the next ${totalTurns} turns!`;
+    } else {
+      throw new Error(`Unknown power card type: ${cardType}`);
+    }
+
+    const savedState = await this.roomService.updateRoomState(
+      roomId,
+      newState,
+      playerId,
+      'USE_POWER_CARD',
+      { cardType, payload },
       description
     );
 

@@ -70,6 +70,7 @@ export function buyProperty(
 
   // Deduct balance
   player.balance -= cost;
+  newState.governmentBank.balance += cost;
 
   // Set ownership
   newState.properties[tileIndex] = {
@@ -129,6 +130,7 @@ export function mortgageProperty(
   const mortgageVal = tile.mortgageValue || Math.floor((tile.price || 0) / 2);
   prop.isMortgaged = true;
   player.balance += mortgageVal;
+  newState.governmentBank.balance -= mortgageVal;
 
   const description = generateLog('mortgagedProperty', {
     playerName: player.name,
@@ -191,6 +193,7 @@ export function unmortgageProperty(
 
   prop.isMortgaged = false;
   player.balance -= costToUnmortgage;
+  newState.governmentBank.balance += costToUnmortgage;
 
   const description = generateLog('unmortgagedProperty', {
     playerName: player.name,

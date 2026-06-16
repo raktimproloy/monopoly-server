@@ -4,6 +4,7 @@ import { TradeService } from './trade.service';
 import { ActionService } from './action.service';
 import { PardonService } from './pardon.service';
 import { MarketCrashService } from './market_crash.service';
+import { BankService } from './bank.service';
 import { GameState, TradeOfferPayload, BoardTile } from '../../../shared/types';
 
 export class GameService {
@@ -12,6 +13,7 @@ export class GameService {
   private tradeService: TradeService;
   private actionService: ActionService;
   private pardonService: PardonService;
+  private bankService: BankService;
 
   constructor() {
     this.roomService = new RoomService();
@@ -19,6 +21,7 @@ export class GameService {
     this.tradeService = new TradeService(this.roomService);
     this.actionService = new ActionService(this.roomService);
     this.pardonService = new PardonService(this.roomService);
+    this.bankService = new BankService(this.roomService);
   }
 
   /**
@@ -204,6 +207,20 @@ export class GameService {
   }
 
   /**
+   * Delegates using a power card to ActionService.
+   */
+  async usePowerCard(roomId: string, playerId: string, cardType: string, payload: any): Promise<{ state: GameState; log: string }> {
+    return this.actionService.usePowerCard(roomId, playerId, cardType, payload);
+  }
+
+  /**
+   * Delegates giving a power card to ActionService.
+   */
+  async devGivePowerCard(roomId: string, playerId: string, cardType: string): Promise<{ state: GameState; log: string }> {
+    return this.actionService.devGivePowerCard(roomId, playerId, cardType);
+  }
+
+  /**
    * Delegates player removal to RoomService.
    */
   async removePlayer(roomId: string, playerId: string): Promise<{ state: GameState | null; log: string; roomDeleted: boolean }> {
@@ -258,5 +275,19 @@ export class GameService {
       };
     }
     return null;
+  }
+
+  /**
+   * Delegates taking a loan to BankService.
+   */
+  async takeLoan(roomId: string, playerId: string, amount: number): Promise<{ state: GameState; log: string }> {
+    return this.bankService.takeLoan(roomId, playerId, amount);
+  }
+
+  /**
+   * Delegates repaying a loan to BankService.
+   */
+  async repayLoan(roomId: string, playerId: string, amount?: number): Promise<{ state: GameState; log: string }> {
+    return this.bankService.repayLoan(roomId, playerId, amount);
   }
 }

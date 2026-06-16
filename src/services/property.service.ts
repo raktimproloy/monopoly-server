@@ -37,6 +37,7 @@ export class PropertyService {
         }
 
         player.balance -= cost;
+        newState.governmentBank.balance += cost;
         newState.properties[tileIndex] = {
           tileIndex,
           ownerId: playerId,
@@ -156,6 +157,11 @@ export class PropertyService {
       throw new Error('Invalid property for building.');
     }
 
+    // Don Hijack check
+    if (newState.activeDonPower && newState.activeDonPower.targetTileIndex === tileIndex) {
+      throw new Error('This property is currently hijacked by the Don. Upgrades are frozen.');
+    }
+
     const groupTiles = tiles.filter(t => t.group === tile.group);
     const groupProps = groupTiles.map(t => newState.properties[t.index]);
 
@@ -174,6 +180,7 @@ export class PropertyService {
     if (player.balance < cost) throw new Error('Insufficient funds to build.');
 
     player.balance -= cost;
+    newState.governmentBank.balance += cost;
     prop.houses = currentHouses + 1;
 
     const description = generateLog('upgradeHouse', { 
@@ -209,6 +216,11 @@ export class PropertyService {
       throw new Error('Invalid property for selling houses.');
     }
 
+    // Don Hijack check
+    if (newState.activeDonPower && newState.activeDonPower.targetTileIndex === tileIndex) {
+      throw new Error('This property is currently hijacked by the Don. Downgrades are frozen.');
+    }
+
     const groupTiles = tiles.filter(t => t.group === tile.group);
     const groupProps = groupTiles.map(t => newState.properties[t.index]);
 
@@ -222,6 +234,7 @@ export class PropertyService {
     const player = newState.players[playerId];
 
     player.balance += refund;
+    newState.governmentBank.balance -= refund;
     prop.houses = currentHouses - 1;
 
     const description = generateLog('downgradeHouse', {
@@ -273,6 +286,7 @@ export class PropertyService {
     const player = newState.players[playerId];
     const refundAmount = prop.isMortgaged ? 0 : (tile.mortgageValue || Math.floor((tile.price || 0) / 2));
     player.balance += refundAmount;
+    newState.governmentBank.balance -= refundAmount;
 
     delete newState.properties[tileIndex];
 
@@ -335,7 +349,7 @@ export class PropertyService {
     };
     
     newState.previousGameStatus = newState.gameStatus;
-    newState.gameStatus = 'AUCTION';
+    newState.gameStatus = 'AUCTION' as any;
 
     const description = generateLog('auctionInitiated', {
       playerName: player.name,
@@ -456,7 +470,7 @@ export class PropertyService {
       }
     }
 
-    newState.gameStatus = newState.previousGameStatus || 'ACTIVE';
+    newState.gameStatus = (newState.previousGameStatus as any) || 'ACTIVE';
     delete newState.activeAuction;
     delete newState.previousGameStatus;
 

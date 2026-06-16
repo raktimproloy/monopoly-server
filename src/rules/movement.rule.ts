@@ -86,15 +86,43 @@ export function executeMovement(
       if (newState.marketCrash?.active) {
         description += ` ➡️ GO তে থেমে ৳0 বোনাস (মার্কেট ক্র্যাশ)!`;
       } else {
-        player.balance += 300;
+        let addedMoney = 300;
+        let loanDeducted = 0;
+        if (player.loan && player.loan.remainingTurns > 0) {
+          loanDeducted = player.loan.deductionPerTurn;
+          player.loan.remainingAmount -= loanDeducted;
+          player.loan.remainingTurns -= 1;
+          if (player.loan.remainingTurns <= 0 || player.loan.remainingAmount <= 0) {
+            player.loan = undefined;
+          }
+        }
+        player.balance += (addedMoney - loanDeducted);
+        newState.governmentBank.balance -= (addedMoney - loanDeducted);
         description += ` ➡️ GO তে থেমে ৳300 বোনাস!`;
+        if (loanDeducted > 0) {
+          description += ` 🏦 (লোন বাবদ ৳${loanDeducted} কাটা হয়েছে)`;
+        }
       }
     } else {
       if (newState.marketCrash?.active) {
         description += ` (মার্কেট ক্র্যাশের জন্য GO বোনাস নেই)`;
       } else {
-        player.balance += 200;
+        let addedMoney = 200;
+        let loanDeducted = 0;
+        if (player.loan && player.loan.remainingTurns > 0) {
+          loanDeducted = player.loan.deductionPerTurn;
+          player.loan.remainingAmount -= loanDeducted;
+          player.loan.remainingTurns -= 1;
+          if (player.loan.remainingTurns <= 0 || player.loan.remainingAmount <= 0) {
+            player.loan = undefined;
+          }
+        }
+        player.balance += (addedMoney - loanDeducted);
+        newState.governmentBank.balance -= (addedMoney - loanDeducted);
         description += generateLog('goCollected', { oldPos: oldPosition, newPos: newPosition });
+        if (loanDeducted > 0) {
+          description += ` 🏦 (লোন বাবদ ৳${loanDeducted} কাটা হয়েছে)`;
+        }
       }
     }
   } else {
@@ -126,6 +154,7 @@ export function executeMovement(
     }
     
     player.balance -= taxCost;
+    newState.governmentBank.balance += taxCost;
     if (newState.settings.freeParkingCashPool) {
       newState.freeParkingPool = (newState.freeParkingPool || 0) + taxCost;
     }
@@ -157,8 +186,19 @@ export function executeMovement(
     }
 
     const deckType = destTile.type === 'CHANCE' ? 'chance' : 'communityChest';
-    const card = drawCard(deckType);
+    let card = drawCard(deckType);
     
+    // Rare Don Card Logic
+    if (!newState.donCardDrawn && Math.random() < 0.05) { // 5% chance
+      card = {
+        id: 'power_don',
+        text: 'BECOME A DON! আপনি একটি স্পেশাল পাওয়ার কার্ড পেয়েছেন। এটি ব্যবহার করে অন্য কারও একটি সম্পত্তি ৩ দানের জন্য দখল করতে পারবেন।',
+        action: 'BECOME_A_DON',
+        isSecret: true
+      };
+      newState.donCardDrawn = true;
+    }
+
     if (card) {
       newState.drawnCard = {
         type: destTile.type,
@@ -185,65 +225,84 @@ export function executeMovement(
       // Unowned
       nextAction = 'BUY_PROPERTY';
       description += generateLog('landedUnownedProperty', { tileName: destTile.name, price: destTile.price });
-    } else if (propState.ownerId !== playerId && !propState.isMortgaged) {
-      // Owned by someone else, and not mortgaged
-      const owner = newState.players[propState.ownerId];
+    } else {
+      // Determine effective owner (could be hijacked by Don)
+      let effectiveOwnerId = propState.ownerId;
+      let isHijacked = false;
+      const donPower = newState.activeDonPower;
+      
+      if (donPower && donPower.targetTileIndex === newPosition) {
+        const donPlayer = newState.players[donPower.donPlayerId];
+        if (donPlayer && !donPlayer.inJail) {
+          effectiveOwnerId = donPower.donPlayerId;
+          isHijacked = true;
+        }
+      }
 
-      if (newState.settings.jailLoss && owner?.inJail) {
-        // Owner is in jail and jailLoss rule is active -> No rent
-        description += ` ➡️ ${owner.name} জেলে থাকায় কোনো রেন্ট দিতে হলো না! (Jail Loss)`;
+      if (effectiveOwnerId === playerId) {
+        description += generateLog('landedOwned', { tileName: destTile.name });
+      } else if (propState.isMortgaged) {
+        description += generateLog('landedMortgaged', { 
+          tileName: destTile.name,
+          ownerName: newState.players[propState.ownerId]?.name || 'owner'
+        });
       } else {
-        nextAction = 'PAY_RENT';
-        rentDuePlayerId = propState.ownerId;
-        
-        // Calculate Rent
-      if (destTile.type === 'STREET') {
-        const houses = propState.houses;
-        rentAmount = destTile.rent ? destTile.rent[houses] : 0;
-        
-        if (houses === 0 && newState.settings.doubleRentOnCompleteSet) {
-          const groupTiles = boardTiles.filter(t => t.group === destTile.group);
-          const ownsFullSet = groupTiles.every(t => {
-            const p = newState.properties[t.index];
-            return p && p.ownerId === propState.ownerId;
-          });
-          if (ownsFullSet) {
-            rentAmount *= 2;
+        // We owe rent to the effective owner
+        const ownerPlayer = newState.players[effectiveOwnerId];
+
+        if (newState.settings.jailLoss && ownerPlayer?.inJail) {
+          // Owner is in jail and jailLoss rule is active -> No rent
+          description += ` ➡️ ${ownerPlayer.name} জেলে থাকায় কোনো রেন্ট দিতে হলো না! (Jail Loss)`;
+        } else {
+          nextAction = 'PAY_RENT';
+          rentDuePlayerId = effectiveOwnerId;
+          
+          if (isHijacked) {
+            description += ` ➡️ (Property Hijacked by Don!)`;
+          }
+          
+          // Calculate Rent
+          if (destTile.type === 'STREET') {
+            const houses = propState.houses;
+            rentAmount = destTile.rent ? destTile.rent[houses] : 0;
+            
+            if (houses === 0 && newState.settings.doubleRentOnCompleteSet) {
+              const groupTiles = boardTiles.filter(t => t.group === destTile.group);
+              const ownsFullSet = groupTiles.every(t => {
+                const p = newState.properties[t.index];
+                return p && p.ownerId === propState.ownerId;
+              });
+              if (ownsFullSet) {
+                rentAmount *= 2;
+              }
+            }
+          } else if (destTile.type === 'RAILROAD') {
+            // Count owned railroads
+            const ownerRailroads = Object.values(newState.properties).filter(
+              (p) => p.ownerId === propState.ownerId && boardTiles[p.tileIndex].type === 'RAILROAD'
+            ).length;
+            rentAmount = (destTile.rent ? destTile.rent[ownerRailroads - 1] : 25) || 25;
+          } else if (destTile.type === 'UTILITY') {
+            // Count owned utilities
+            const ownerUtilities = Object.values(newState.properties).filter(
+              (p) => p.ownerId === propState.ownerId && boardTiles[p.tileIndex].type === 'UTILITY'
+            ).length;
+            const multiplier = ownerUtilities === 2 ? 10 : 4;
+            rentAmount = (d1 + d2) * multiplier;
+          }
+
+          if (rentAmount && rentAmount > 0) {
+            if (newState.marketCrash?.active) {
+              rentAmount = Math.ceil(rentAmount * 1.40);
+            }
+            description += generateLog('landedOwnedPropertyRentDue', {
+              tileName: destTile.name,
+              ownerName: ownerPlayer?.name || 'another player',
+              rentAmount
+            });
           }
         }
-      } else if (destTile.type === 'RAILROAD') {
-        // Count owned railroads
-        const ownerRailroads = Object.values(newState.properties).filter(
-          (p) => p.ownerId === propState.ownerId && boardTiles[p.tileIndex].type === 'RAILROAD'
-        ).length;
-        rentAmount = (destTile.rent ? destTile.rent[ownerRailroads - 1] : 25) || 25;
-      } else if (destTile.type === 'UTILITY') {
-        // Count owned utilities
-        const ownerUtilities = Object.values(newState.properties).filter(
-          (p) => p.ownerId === propState.ownerId && boardTiles[p.tileIndex].type === 'UTILITY'
-        ).length;
-        const multiplier = ownerUtilities === 2 ? 10 : 4;
-        rentAmount = (d1 + d2) * multiplier;
       }
-
-      if (rentAmount && rentAmount > 0) {
-        if (newState.marketCrash?.active) {
-          rentAmount = Math.ceil(rentAmount * 1.40);
-        }
-        description += generateLog('landedOwnedPropertyRentDue', {
-          tileName: destTile.name,
-          ownerName: newState.players[propState.ownerId]?.name || 'another player',
-          rentAmount
-        });
-      }
-      }
-    } else if (propState.ownerId === playerId) {
-      description += generateLog('landedOwned', { tileName: destTile.name });
-    } else if (propState.isMortgaged) {
-      description += generateLog('landedMortgaged', { 
-        tileName: destTile.name,
-        ownerName: newState.players[propState.ownerId]?.name || 'owner'
-      });
     }
   }
 

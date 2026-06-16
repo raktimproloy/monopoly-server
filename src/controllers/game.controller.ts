@@ -657,6 +657,42 @@ export class GameController {
       }
     });
 
+    // --- 5.11 Dev Give Power Card Event ---
+    socket.on('dev_give_power_card', async (payload: any) => {
+      const roomId = this.getSocketRoom(socket);
+      if (!roomId) return socket.emit('error_message', 'Not in a game room');
+
+      try {
+        const { playerId, cardType } = payload;
+        const identityCheck = antiCheatGuard.verifySocketIdentity(socket, playerId);
+        if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
+
+        const { state: updatedState, log } = await this.gameService.devGivePowerCard(roomId, playerId, cardType);
+        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
+      } catch (err: any) {
+        logger.error(`Error in dev_give_power_card for room ${roomId}`, err);
+        socket.emit('error_message', err.message || 'Validation error');
+      }
+    });
+
+    // --- 5.12 Use Power Card Event ---
+    socket.on('use_power_card', async (payload: any) => {
+      const roomId = this.getSocketRoom(socket);
+      if (!roomId) return socket.emit('error_message', 'Not in a game room');
+
+      try {
+        const { playerId, cardType, actionPayload } = payload;
+        const identityCheck = antiCheatGuard.verifySocketIdentity(socket, playerId);
+        if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
+
+        const { state: updatedState, log } = await this.gameService.usePowerCard(roomId, playerId, cardType, actionPayload);
+        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
+      } catch (err: any) {
+        logger.error(`Error in use_power_card for room ${roomId}`, err);
+        socket.emit('error_message', err.message || 'Validation error');
+      }
+    });
+
     // --- 7. Respond To Trade Event ---
     socket.on('respond_to_trade', async (payload: any) => {
       const roomId = this.getSocketRoom(socket);
@@ -781,6 +817,39 @@ export class GameController {
         socket.emit('error_message', err.message || 'Failed to use pardon card');
       }
     });
+
+    socket.on('take_loan', async (payload: any) => {
+      const roomId = this.getSocketRoom(socket);
+      if (!roomId) return socket.emit('error_message', 'Not in a game room');
+      try {
+        const { playerId, amount } = payload;
+        const identityCheck = antiCheatGuard.verifySocketIdentity(socket, playerId);
+        if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
+
+        const { state: updatedState, log } = await this.gameService.takeLoan(roomId, playerId, amount);
+        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
+      } catch (err: any) {
+        logger.error(`Error in take_loan for room ${roomId}`, err);
+        socket.emit('error_message', err.message || 'Failed to take loan');
+      }
+    });
+
+    socket.on('repay_loan', async (payload: any) => {
+      const roomId = this.getSocketRoom(socket);
+      if (!roomId) return socket.emit('error_message', 'Not in a game room');
+      try {
+        const { playerId, amount } = payload;
+        const identityCheck = antiCheatGuard.verifySocketIdentity(socket, playerId);
+        if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
+
+        const { state: updatedState, log } = await this.gameService.repayLoan(roomId, playerId, amount);
+        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
+      } catch (err: any) {
+        logger.error(`Error in repay_loan for room ${roomId}`, err);
+        socket.emit('error_message', err.message || 'Failed to repay loan');
+      }
+    });
+
 
     // --- 8.5 Declare Bankruptcy Event ---
     socket.on('declare_bankruptcy', async (payload: any) => {

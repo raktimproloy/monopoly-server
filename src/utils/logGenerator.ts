@@ -20,7 +20,7 @@ export function loadLogTemplates() {
 
 export function generateLog(key: string, params: Record<string, any>): string {
   const templates = loadLogTemplates();
-  let template = templates[key];
+  let template = templates![key];
 
   if (!template) {
     // Fallback if key not found
