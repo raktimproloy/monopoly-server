@@ -303,13 +303,57 @@ export function calculateRentAtTile(
 }
 
 /**
- * Executes rent payment transfer from player to owner.
+ * When a debtor receives cash (mortgage, sell, etc.), route it to the rent creditor.
+ */
+export function applyRentDebtCollection(
+  state: GameState,
+  debtorId: string
+): { newState: GameState; extraDescription: string } {
+  const debt = state.pendingRentOwed;
+  if (!debt || debt.debtorId !== debtorId || debt.remainingAmount <= 0) {
+    return { newState: state, extraDescription: '' };
+  }
+
+  const newState = JSON.parse(JSON.stringify(state)) as GameState;
+  const activeDebt = newState.pendingRentOwed!;
+  const debtor = newState.players[debtorId];
+  const creditor = newState.players[activeDebt.creditorId];
+
+  if (!debtor || !creditor || creditor.isBankrupt) {
+    return { newState: state, extraDescription: '' };
+  }
+
+  const available = Math.max(0, debtor.balance);
+  if (available === 0) {
+    return { newState: state, extraDescription: '' };
+  }
+
+  const pay = Math.min(available, activeDebt.remainingAmount);
+  debtor.balance -= pay;
+  creditor.balance += pay;
+  activeDebt.remainingAmount -= pay;
+
+  let extraDescription = ` ${debtor.name} ${creditor.name}-কে আরও ৳${pay} ভাড়া দিয়েছেন।`;
+
+  if (activeDebt.remainingAmount <= 0) {
+    newState.pendingRentOwed = null;
+    if (newState.turnStatus === 'BANKRUPTCY_PENDING') {
+      newState.turnStatus = 'MUST_ACT_OR_END';
+    }
+  }
+
+  return { newState, extraDescription };
+}
+
+/**
+ * Executes rent payment transfer from player to owner (pocket cash only on landing).
  */
 export function payRent(
   state: GameState,
   playerId: string,
   ownerId: string,
-  rentAmount: number
+  rentAmount: number,
+  tileIndex?: number
 ): { newState: GameState; description: string } {
   const newState = JSON.parse(JSON.stringify(state)) as GameState;
   const renter = newState.players[playerId];
@@ -319,19 +363,31 @@ export function payRent(
     throw new Error('Renter or Owner player not found in state.');
   }
 
-  renter.balance -= rentAmount;
-  owner.balance += rentAmount;
+  const pocketCash = Math.max(0, renter.balance);
+  const actualPaid = Math.min(rentAmount, pocketCash);
+  const remaining = rentAmount - actualPaid;
+
+  renter.balance -= actualPaid;
+  owner.balance += actualPaid;
 
   let description = generateLog('paidRent', {
     payerName: renter.name,
-    rentAmount,
+    rentAmount: actualPaid,
     ownerName: owner.name
   });
 
-  if (renter.balance < 0) {
+  if (remaining > 0 && tileIndex !== undefined) {
+    newState.pendingRentOwed = {
+      debtorId: playerId,
+      creditorId: ownerId,
+      remainingAmount: remaining,
+      tileIndex,
+      fullRentAmount: rentAmount,
+    };
     newState.turnStatus = 'BANKRUPTCY_PENDING';
-    description += ` ${renter.name} is in debt! Must mortgage properties or declare bankruptcy.`;
+    description += ` (মোট ভাড়া ৳${rentAmount}, পকেটে ছিল ৳${actualPaid}। বাকি ৳${remaining} — বিক্রি/বন্ধক করলে ${owner.name} পাবেন।)`;
   } else {
+    newState.pendingRentOwed = null;
     newState.turnStatus = 'MUST_ACT_OR_END';
   }
 

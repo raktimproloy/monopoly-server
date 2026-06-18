@@ -407,6 +407,7 @@ export class RoomService {
     newState.activeAuction = undefined;
     newState.drawnCard = null;
     newState.kickVotes = {};
+    newState.pendingRentOwed = null;
     newState.activeDonPower = null;
     newState.donCardDrawn = false;
     newState.marketCrash = {
@@ -464,9 +465,13 @@ export class RoomService {
     // Normalize Turn Status for Negative Balances
     const currentTurnPlayer = newState.players[newState.currentTurnPlayerId];
     if (currentTurnPlayer) {
-      if (newState.turnStatus === 'BANKRUPTCY_PENDING' && currentTurnPlayer.balance >= 0) {
+      const owesRent =
+        newState.pendingRentOwed?.debtorId === newState.currentTurnPlayerId &&
+        (newState.pendingRentOwed?.remainingAmount ?? 0) > 0;
+
+      if (newState.turnStatus === 'BANKRUPTCY_PENDING' && currentTurnPlayer.balance >= 0 && !owesRent) {
         newState.turnStatus = 'MUST_ACT_OR_END';
-      } else if (newState.turnStatus === 'MUST_ACT_OR_END' && currentTurnPlayer.balance < 0) {
+      } else if (newState.turnStatus === 'MUST_ACT_OR_END' && (currentTurnPlayer.balance < 0 || owesRent)) {
         newState.turnStatus = 'BANKRUPTCY_PENDING';
       }
     }

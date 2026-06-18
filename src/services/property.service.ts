@@ -1,6 +1,6 @@
 import { RoomService } from './room.service';
 import { GameState } from '../../../shared/types';
-import { canBuyProperty, buyProperty, canMortgageProperty, mortgageProperty, canUnmortgageProperty, unmortgageProperty, canOwnerManageHijackedProperty } from '../rules';
+import { canBuyProperty, buyProperty, canMortgageProperty, mortgageProperty, canUnmortgageProperty, unmortgageProperty, canOwnerManageHijackedProperty, applyRentDebtCollection } from '../rules';
 import { generateLog } from '../utils/logGenerator';
 
 export class PropertyService {
@@ -87,11 +87,10 @@ export class PropertyService {
       throw new Error(validation.error || 'Cannot mortgage property.');
     }
 
-    const { newState, description } = mortgageProperty(state, playerId, tileIndex, tiles);
-
-    if (newState.players[playerId].balance >= 0 && newState.turnStatus === 'BANKRUPTCY_PENDING') {
-      newState.turnStatus = 'MUST_ACT_OR_END';
-    }
+    let { newState, description } = mortgageProperty(state, playerId, tileIndex, tiles);
+    const collected = applyRentDebtCollection(newState, playerId);
+    newState = collected.newState;
+    description += collected.extraDescription;
 
     const savedState = await this.roomService.updateRoomState(
       roomId,
@@ -244,14 +243,14 @@ export class PropertyService {
       refund
     });
 
-    if (player.balance >= 0 && newState.turnStatus === 'BANKRUPTCY_PENDING' && newState.currentTurnPlayerId === playerId) {
-      newState.turnStatus = 'MUST_ACT_OR_END';
-    }
+    const collected = applyRentDebtCollection(newState, playerId);
+    const finalState = collected.newState;
+    const finalDescription = description + collected.extraDescription;
 
     const savedState = await this.roomService.updateRoomState(
-      roomId, newState, playerId, 'SELL_HOUSE', { tileIndex }, description
+      roomId, finalState, playerId, 'SELL_HOUSE', { tileIndex }, finalDescription
     );
-    return { state: savedState, log: description };
+    return { state: savedState, log: finalDescription };
   }
 
   /**
@@ -299,14 +298,14 @@ export class PropertyService {
       refundAmount
     });
 
-    if (player.balance >= 0 && newState.turnStatus === 'BANKRUPTCY_PENDING' && newState.currentTurnPlayerId === playerId) {
-      newState.turnStatus = 'MUST_ACT_OR_END';
-    }
+    const collected = applyRentDebtCollection(newState, playerId);
+    const finalState = collected.newState;
+    const finalDescription = description + collected.extraDescription;
 
     const savedState = await this.roomService.updateRoomState(
-      roomId, newState, playerId, 'SELL_PROPERTY', { tileIndex }, description
+      roomId, finalState, playerId, 'SELL_PROPERTY', { tileIndex }, finalDescription
     );
-    return { state: savedState, log: description };
+    return { state: savedState, log: finalDescription };
   }
 
   /**

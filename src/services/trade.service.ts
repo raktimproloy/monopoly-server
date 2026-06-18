@@ -1,6 +1,6 @@
 import { RoomService } from './room.service';
 import { GameState, TradeOfferPayload } from '../../../shared/types';
-import { canOfferTrade, executeTrade } from '../rules';
+import { canOfferTrade, executeTrade, applyRentDebtCollection } from '../rules';
 
 export class TradeService {
   private roomService: RoomService;
@@ -23,15 +23,23 @@ export class TradeService {
 
     const { newState, description } = executeTrade(state, offer);
 
+    let finalState = newState;
+    let finalDescription = description;
+    for (const pid of [offer.senderId, offer.receiverId]) {
+      const collected = applyRentDebtCollection(finalState, pid);
+      finalState = collected.newState;
+      finalDescription += collected.extraDescription;
+    }
+
     const savedState = await this.roomService.updateRoomState(
       roomId,
-      newState,
+      finalState,
       offer.senderId,
       'EXECUTE_TRADE',
       offer,
-      description
+      finalDescription
     );
 
-    return { state: savedState, log: description };
+    return { state: savedState, log: finalDescription };
   }
 }

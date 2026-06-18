@@ -73,7 +73,8 @@ export class ActionService {
     let finalDescription = initialLog + description;
 
     if (nextAction === 'PAY_RENT' && rentDuePlayerId && rentAmount) {
-      const rentResult = payRent(updatedState, playerId, rentDuePlayerId, rentAmount);
+      const tileIndex = updatedState.players[playerId].position;
+      const rentResult = payRent(updatedState, playerId, rentDuePlayerId, rentAmount, tileIndex);
       finalState = rentResult.newState;
       finalDescription = finalDescription + ' ' + rentResult.description;
     }
@@ -151,7 +152,8 @@ export class ActionService {
     }
 
     if (nextAction === 'PAY_RENT' && rentDuePlayerId && rentAmount) {
-      const rentResult = payRent(newState, playerId, rentDuePlayerId, rentAmount);
+      const tileIndex = newState.players[playerId].position;
+      const rentResult = payRent(newState, playerId, rentDuePlayerId, rentAmount, tileIndex);
       finalState = rentResult.newState;
       finalDescription = finalDescription + ' ' + rentResult.description;
     }
@@ -201,7 +203,8 @@ export class ActionService {
     let finalDescription = `[DEV] ${description}`;
 
     if (nextAction === 'PAY_RENT' && rentDuePlayerId && rentAmount) {
-      const rentResult = payRent(newState, playerId, rentDuePlayerId, rentAmount);
+      const tileIndex = newState.players[playerId].position;
+      const rentResult = payRent(newState, playerId, rentDuePlayerId, rentAmount, tileIndex);
       finalState = rentResult.newState;
       finalDescription = finalDescription + ' ' + rentResult.description;
     }
@@ -241,6 +244,12 @@ export class ActionService {
     const player = state.players[playerId];
     if (player.balance < 0) {
       throw new Error('You cannot end your turn while your cash balance is negative! Sell assets or declare bankruptcy.');
+    }
+    if (
+      state.pendingRentOwed?.debtorId === playerId &&
+      state.pendingRentOwed.remainingAmount > 0
+    ) {
+      throw new Error('You still owe rent! Mortgage or sell assets to pay the property owner, or declare bankruptcy.');
     }
 
     const newState = JSON.parse(JSON.stringify(state)) as GameState;
@@ -346,15 +355,18 @@ export class ActionService {
 
     const newState = JSON.parse(JSON.stringify(state)) as GameState;
     const pState = newState.players[playerId];
-    const { tiles: boardTiles } = await this.roomService.loadBoardTemplate();
 
-    // Reverse rent payment to creditor when bankrupt with negative balance — no one keeps owed money
+    newState.pendingRentOwed = null;
+
+    // Legacy: reverse overpayment if balance somehow negative from other charges
     if (pState.balance < 0) {
+      const { tiles: boardTiles } = await this.roomService.loadBoardTemplate();
       const rentInfo = calculateRentAtTile(newState, pState.position, boardTiles);
       if (rentInfo && rentInfo.ownerId !== playerId) {
         const creditor = newState.players[rentInfo.ownerId];
         if (creditor) {
-          creditor.balance = Math.max(0, creditor.balance - rentInfo.rentAmount);
+          const clawback = Math.min(creditor.balance, Math.abs(pState.balance));
+          creditor.balance = Math.max(0, creditor.balance - clawback);
         }
       }
     }
