@@ -1,6 +1,6 @@
 import { RoomService } from './room.service';
 import { GameState } from '../../../shared/types';
-import { canBuyProperty, buyProperty, canMortgageProperty, mortgageProperty, canUnmortgageProperty, unmortgageProperty } from '../rules';
+import { canBuyProperty, buyProperty, canMortgageProperty, mortgageProperty, canUnmortgageProperty, unmortgageProperty, canOwnerManageHijackedProperty } from '../rules';
 import { generateLog } from '../utils/logGenerator';
 
 export class PropertyService {
@@ -274,6 +274,9 @@ export class PropertyService {
       throw new Error('Invalid property to sell.');
     }
 
+    const hijackCheck = canOwnerManageHijackedProperty(newState, playerId, tileIndex);
+    if (!hijackCheck.valid) throw new Error(hijackCheck.error);
+
     if (tile.type === 'STREET' && tile.group) {
       const groupTiles = tiles.filter(t => t.group === tile.group);
       const groupHasHouses = groupTiles.some(t => {
@@ -329,6 +332,8 @@ export class PropertyService {
     let sellerId: string | null = null;
 
     if (prop && prop.ownerId === playerId) {
+      const hijackCheck = canOwnerManageHijackedProperty(newState, playerId, tileIndex);
+      if (!hijackCheck.valid) throw new Error(hijackCheck.error);
       if (prop.houses > 0) throw new Error('Cannot auction property with houses.');
       startPrice = prop.isMortgaged ? Math.floor(startPrice * 0.4) : Math.floor(startPrice * 0.7);
       sellerId = playerId;

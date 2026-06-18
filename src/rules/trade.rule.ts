@@ -1,5 +1,6 @@
 import { GameState, TradeOfferPayload } from '../../../shared/types';
 import { generateLog } from '../utils/logGenerator';
+import { canOwnerManageHijackedProperty } from './property.rule';
 
 /**
  * Validates a trade proposal.
@@ -35,6 +36,8 @@ export function canOfferTrade(
     if (prop.houses > 0) {
       return { valid: false, error: `Cannot trade property at index ${idx} because it still has houses built on it.` };
     }
+    const hijackCheck = canOwnerManageHijackedProperty(state, offer.senderId, idx);
+    if (!hijackCheck.valid) return hijackCheck;
   }
 
   // 3. Verify Receiver properties
@@ -46,6 +49,8 @@ export function canOfferTrade(
     if (prop.houses > 0) {
       return { valid: false, error: `Cannot trade property at index ${idx} because it still has houses built on it.` };
     }
+    const hijackCheck = canOwnerManageHijackedProperty(state, offer.receiverId, idx);
+    if (!hijackCheck.valid) return hijackCheck;
   }
 
   return { valid: true };

@@ -92,6 +92,33 @@ export function buyProperty(
 /**
  * Validates if a player can mortgage a property.
  */
+export function isPropertyHijackedByDon(state: GameState, tileIndex: number): boolean {
+  const donPower = state.activeDonPower;
+  if (!donPower || donPower.targetTileIndex !== tileIndex) return false;
+  const donPlayer = state.players[donPower.donPlayerId];
+  return !!(donPlayer && !donPlayer.inJail);
+}
+
+export function canOwnerManageHijackedProperty(
+  state: GameState,
+  playerId: string,
+  tileIndex: number
+): { valid: boolean; error?: string } {
+  const donPower = state.activeDonPower;
+  if (
+    donPower &&
+    donPower.targetTileIndex === tileIndex &&
+    donPower.originalOwnerId === playerId &&
+    isPropertyHijackedByDon(state, tileIndex)
+  ) {
+    return {
+      valid: false,
+      error: 'This property is hijacked by the Don. The owner cannot manage it until the Don power expires.',
+    };
+  }
+  return { valid: true };
+}
+
 export function canMortgageProperty(
   state: GameState,
   playerId: string,
@@ -109,6 +136,9 @@ export function canMortgageProperty(
   if (prop.houses > 0) {
     return { valid: false, error: 'Must sell all houses before mortgaging property.' };
   }
+
+  const hijackCheck = canOwnerManageHijackedProperty(state, playerId, tileIndex);
+  if (!hijackCheck.valid) return hijackCheck;
 
   return { valid: true };
 }
@@ -170,6 +200,9 @@ export function canUnmortgageProperty(
       error: `Insufficient balance. Unmortgage costs ৳${costToUnmortgage} (mortgage value + 10%), you have ৳${player.balance}.`
     };
   }
+
+  const hijackCheck = canOwnerManageHijackedProperty(state, playerId, tileIndex);
+  if (!hijackCheck.valid) return hijackCheck;
 
   return { valid: true };
 }
