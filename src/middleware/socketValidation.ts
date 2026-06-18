@@ -36,6 +36,15 @@ export const PayJailFineSchema = z.object({
   playerId: z.string().min(1),
 });
 
+export const CastKickVoteSchema = z.object({
+  playerId: z.string().min(1),
+  targetPlayerId: z.string().min(1).nullable(),
+});
+
+export const RestartGameSchema = z.object({
+  playerId: z.string().min(1),
+});
+
 export const TradeOfferSchema = z.object({
   senderId: z.string().min(1),
   receiverId: z.string().min(1),

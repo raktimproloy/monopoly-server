@@ -1,6 +1,6 @@
 import { RoomService } from './room.service';
-import { GameState } from '../../../shared/types';
-import { executeMovement, payRent } from '../rules';
+import { GameState, BoardTile } from '../../../shared/types';
+import { executeMovement, payRent, calculateRentAtTile } from '../rules';
 import { generateLog } from '../utils/logGenerator';
 
 export class ActionService {
@@ -8,6 +8,32 @@ export class ActionService {
 
   constructor(roomService: RoomService) {
     this.roomService = roomService;
+  }
+
+  /**
+   * After a double roll, skip the "end turn" step when no buy decision is pending.
+   */
+  private applyDoubleRollTurnStatus(state: GameState, playerId: string, tiles: BoardTile[]): GameState {
+    const player = state.players[playerId];
+    if (!player) return state;
+
+    const isDouble = state.dice[0] === state.dice[1] && state.dice[0] > 0;
+    if (!isDouble || state.doubleRollCount <= 0 || player.inJail) return state;
+    if (state.turnStatus !== 'MUST_ACT_OR_END') return state;
+
+    const pos = player.position;
+    const tile = tiles[pos];
+    const prop = state.properties[pos];
+    const canBuy =
+      tile &&
+      ['STREET', 'RAILROAD', 'UTILITY'].includes(tile.type) &&
+      !prop?.ownerId;
+
+    if (!canBuy) {
+      state.turnStatus = 'MUST_ROLL';
+    }
+
+    return state;
   }
 
   /**
@@ -51,6 +77,8 @@ export class ActionService {
       finalState = rentResult.newState;
       finalDescription = finalDescription + ' ' + rentResult.description;
     }
+
+    finalState = this.applyDoubleRollTurnStatus(finalState, playerId, tiles);
 
     const savedState = await this.roomService.updateRoomState(
       roomId,
@@ -178,6 +206,8 @@ export class ActionService {
       finalDescription = finalDescription + ' ' + rentResult.description;
     }
 
+    finalState = this.applyDoubleRollTurnStatus(finalState, playerId, tiles);
+
     const savedState = await this.roomService.updateRoomState(
       roomId,
       finalState,
@@ -304,7 +334,7 @@ export class ActionService {
   }
 
   /**
-   * Declares bankruptcy for a player, surrendering assets to their creditor or the bank.
+   * Declares bankruptcy for a player. All properties return to the bank; no creditor receives assets or unpaid debt.
    */
   async declareBankruptcy(roomId: string, playerId: string): Promise<{ state: GameState; log: string }> {
     const state = await this.roomService.getRoomState(roomId);
@@ -316,50 +346,32 @@ export class ActionService {
 
     const newState = JSON.parse(JSON.stringify(state)) as GameState;
     const pState = newState.players[playerId];
+    const { tiles: boardTiles } = await this.roomService.loadBoardTemplate();
+
+    // Reverse rent payment to creditor when bankrupt with negative balance — no one keeps owed money
+    if (pState.balance < 0) {
+      const rentInfo = calculateRentAtTile(newState, pState.position, boardTiles);
+      if (rentInfo && rentInfo.ownerId !== playerId) {
+        const creditor = newState.players[rentInfo.ownerId];
+        if (creditor) {
+          creditor.balance = Math.max(0, creditor.balance - rentInfo.rentAmount);
+        }
+      }
+    }
 
     pState.isBankrupt = true;
     pState.balance = 0;
 
-    const currentTileIndex = pState.position;
-    const propState = state.properties[currentTileIndex];
-    const { tiles: boardTiles } = await this.roomService.loadBoardTemplate();
-
-    let creditorName = 'the bank';
-    let creditorId: string | null = null;
-
-    // Check if player is on a property owned by someone else
-    if (
-      propState &&
-      propState.ownerId &&
-      propState.ownerId !== playerId &&
-      !propState.isMortgaged
-    ) {
-      creditorId = propState.ownerId;
-      creditorName = newState.players[creditorId]?.name || 'another player';
-    }
-
-    // Distribute properties
+    // Return all properties to the bank (free — no player receives them)
     const playerProperties = Object.values(newState.properties).filter(
       (p) => p.ownerId === playerId
     );
-
-    if (creditorId) {
-      // Transfer all properties to creditor
-      playerProperties.forEach((p) => {
-        p.ownerId = creditorId;
-        // Keep mortgaged status, but sell houses
-        p.houses = 0;
-      });
-    } else {
-      // Return properties to bank (reset them)
-      playerProperties.forEach((p) => {
-        delete newState.properties[p.tileIndex];
-      });
-    }
+    playerProperties.forEach((p) => {
+      delete newState.properties[p.tileIndex];
+    });
 
     let description = generateLog('bankruptcyDeclared', {
-      playerName: pState.name,
-      creditorName
+      playerName: pState.name
     });
 
     // Rotate turn if it was their turn
@@ -399,7 +411,7 @@ export class ActionService {
       newState,
       playerId,
       'DECLARE_BANKRUPTCY',
-      { bankruptPlayerId: playerId, creditorId },
+      { bankruptPlayerId: playerId },
       description
     );
 
@@ -660,6 +672,104 @@ export class ActionService {
       playerId,
       'USE_POWER_CARD',
       { cardType, payload },
+      description
+    );
+
+    return { state: savedState, log: description };
+  }
+
+  /**
+   * Casts or changes a kick vote. When 50%+ of active players vote for someone, they are eliminated.
+   */
+  async castKickVote(
+    roomId: string,
+    voterId: string,
+    targetPlayerId: string | null
+  ): Promise<{ state: GameState; log: string }> {
+    const state = await this.roomService.getRoomState(roomId);
+    if (!state) throw new Error(`Game room ${roomId} not found.`);
+    if (state.gameStatus !== 'ACTIVE') throw new Error('Kick votes are only allowed during active games.');
+
+    const voter = state.players[voterId];
+    if (!voter || voter.isBankrupt) throw new Error('You cannot vote while bankrupt.');
+
+    const newState = JSON.parse(JSON.stringify(state)) as GameState;
+    if (!newState.kickVotes) newState.kickVotes = {};
+
+    if (targetPlayerId === null) {
+      delete newState.kickVotes[voterId];
+    } else {
+      if (targetPlayerId === voterId) throw new Error('You cannot vote to kick yourself.');
+      const target = newState.players[targetPlayerId];
+      if (!target || target.isBankrupt) throw new Error('Invalid kick target.');
+      newState.kickVotes[voterId] = targetPlayerId;
+    }
+
+    let description = targetPlayerId
+      ? `${voter.name} ${newState.players[targetPlayerId]?.name}-কে কিক করার জন্য ভোট দিয়েছেন।`
+      : `${voter.name} তাদের কিক ভোট প্রত্যাহার করেছেন।`;
+
+    const activePlayers = Object.values(newState.players).filter((p) => !p.isBankrupt);
+    const requiredVotes = Math.ceil(activePlayers.length / 2);
+
+    const voteCounts: Record<string, number> = {};
+    for (const [vId, tId] of Object.entries(newState.kickVotes)) {
+      const v = newState.players[vId];
+      const t = newState.players[tId];
+      if (!v || v.isBankrupt || !t || t.isBankrupt) continue;
+      voteCounts[tId] = (voteCounts[tId] || 0) + 1;
+    }
+
+    let kickedPlayerId: string | null = null;
+    for (const [tId, count] of Object.entries(voteCounts)) {
+      if (count >= requiredVotes) {
+        kickedPlayerId = tId;
+        break;
+      }
+    }
+
+    if (kickedPlayerId) {
+      const kicked = newState.players[kickedPlayerId];
+      kicked.isBankrupt = true;
+      kicked.balance = 0;
+
+      Object.values(newState.properties)
+        .filter((p) => p.ownerId === kickedPlayerId)
+        .forEach((p) => delete newState.properties[p.tileIndex]);
+
+      newState.kickVotes = {};
+
+      if (newState.currentTurnPlayerId === kickedPlayerId) {
+        const currentIndex = newState.playerOrder.indexOf(kickedPlayerId);
+        let nextIndex = (currentIndex + 1) % newState.playerOrder.length;
+        let attempts = 0;
+        while (newState.players[newState.playerOrder[nextIndex]].isBankrupt && attempts < newState.playerOrder.length) {
+          nextIndex = (nextIndex + 1) % newState.playerOrder.length;
+          attempts++;
+        }
+        const nextPlayerId = newState.playerOrder[nextIndex];
+        newState.currentTurnPlayerId = nextPlayerId;
+        newState.turnStatus = newState.players[nextPlayerId].inJail ? 'MUST_ACT_OR_END' : 'MUST_ROLL';
+        newState.doubleRollCount = 0;
+      }
+
+      const remaining = Object.values(newState.players).filter((p) => !p.isBankrupt);
+      description = `${kicked.name} ভোটের মাধ্যমে গেম থেকে বের হয়ে গেছেন!`;
+      if (remaining.length <= 1) {
+        newState.gameStatus = 'FINISHED';
+        newState.winnerId = remaining[0]?.id || null;
+        if (newState.winnerId) {
+          description += ` গেম শেষ! ${newState.players[newState.winnerId].name} জিতেছেন!`;
+        }
+      }
+    }
+
+    const savedState = await this.roomService.updateRoomState(
+      roomId,
+      newState,
+      voterId,
+      kickedPlayerId ? 'PLAYER_KICKED' : 'CAST_KICK_VOTE',
+      { voterId, targetPlayerId, kickedPlayerId },
       description
     );
 

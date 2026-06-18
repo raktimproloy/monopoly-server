@@ -372,6 +372,65 @@ export class RoomService {
   }
 
   /**
+   * Restarts the game with the same players and settings after a finished match.
+   */
+  async restartGame(roomId: string, playerId: string): Promise<GameState> {
+    const state = await this.getRoomState(roomId);
+    if (!state) throw new Error(`Room ${roomId} not found.`);
+    if (state.gameStatus !== 'FINISHED') throw new Error('Game must be finished before restarting.');
+
+    const newState = JSON.parse(JSON.stringify(state)) as GameState;
+    const settings = { ...newState.settings };
+
+    Object.keys(newState.players).forEach((pId) => {
+      const p = newState.players[pId];
+      p.position = 0;
+      p.balance = settings.startingCash;
+      p.isBankrupt = false;
+      p.inJail = false;
+      p.jailTurns = 0;
+      delete p.loan;
+      delete p.getOutOfJailFreeCards;
+      delete p.skipTurns;
+      delete p.powerCards;
+    });
+
+    newState.properties = {};
+    newState.playerOrder.sort(() => Math.random() - 0.5);
+    newState.currentTurnPlayerId = newState.playerOrder[0];
+    newState.gameStatus = 'ACTIVE';
+    newState.turnStatus = 'MUST_ROLL';
+    newState.winnerId = null;
+    newState.dice = [1, 1];
+    newState.doubleRollCount = 0;
+    newState.freeParkingPool = 0;
+    newState.activeAuction = undefined;
+    newState.drawnCard = null;
+    newState.kickVotes = {};
+    newState.activeDonPower = null;
+    newState.donCardDrawn = false;
+    newState.marketCrash = {
+      active: false,
+      nextCrashTime: null,
+      crashEndTime: null,
+      crashCount: 0
+    };
+
+    const { newState: stateWithCrash } = MarketCrashService.scheduleNextCrash(newState);
+
+    const resultState = await this.updateRoomState(
+      roomId,
+      stateWithCrash,
+      playerId,
+      'RESTART_GAME',
+      {},
+      `নতুন গেম শুরু! ${stateWithCrash.players[stateWithCrash.currentTurnPlayerId].name}-এর চাল দিয়ে শুরু হলো।`
+    );
+
+    return resultState;
+  }
+
+  /**
    * Loads active game state.
    */
   async getRoomState(roomId: string): Promise<GameState | null> {

@@ -334,8 +334,10 @@ export function executeMovement(
   }
 
   // Update status
+  const hasActiveDouble = isDouble && !wasInJail && newState.doubleRollCount > 0;
+
   if (nextAction === 'NONE') {
-    newState.turnStatus = 'MUST_ACT_OR_END';
+    newState.turnStatus = hasActiveDouble ? 'MUST_ROLL' : 'MUST_ACT_OR_END';
   } else if (nextAction === 'PAY_RENT') {
     newState.turnStatus = 'BANKRUPTCY_PENDING'; // player must resolve rent before turn actions
   } else if (nextAction === 'BUY_PROPERTY') {

@@ -187,6 +187,20 @@ export class GameService {
   }
 
   /**
+   * Delegates kick vote to ActionService.
+   */
+  async castKickVote(roomId: string, voterId: string, targetPlayerId: string | null): Promise<{ state: GameState; log: string }> {
+    return this.actionService.castKickVote(roomId, voterId, targetPlayerId);
+  }
+
+  /**
+   * Restarts a finished game with the same players and settings.
+   */
+  async restartGame(roomId: string, playerId: string): Promise<GameState> {
+    return this.roomService.restartGame(roomId, playerId);
+  }
+
+  /**
    * Delegates paying jail fine to ActionService.
    */
   async payJailFine(roomId: string, playerId: string): Promise<{ state: GameState; log: string }> {

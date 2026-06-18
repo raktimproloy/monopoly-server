@@ -11,7 +11,7 @@
   "auctionSecured": "{winnerName} {tileName} কিনেছেন ৳{currentBid}-এ।",
   "auctionTerminated": "{tileName}-এর নিলাম বাতিল!",
   "turnEnded": "{playerName} এর চাল শেষ। এখন {nextPlayerName}।",
-  "bankruptcyDeclared": "{playerName} দেউলিয়া! সম্পত্তি পেয়েছেন {creditorName}।",
+  "bankruptcyDeclared": "{playerName} দেউলিয়া! সমস্ত সম্পত্তি ব্যাংকে ফিরে গেছে।",
   "paidJailFine": "{playerName} ৳50 জরিমানা দিয়ে জেল থেকে মুক্ত।",
   "tradeComplete": "{senderName} ও {receiverName} এর মধ্যে চুক্তি সম্পন্ন!",
   "boughtProperty": "{playerName} \"{tileName}\" কিনেছেন (৳{cost})।",

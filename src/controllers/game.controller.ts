@@ -10,6 +10,8 @@ import {
   EndTurnSchema,
   DeclareBankruptcySchema,
   PayJailFineSchema,
+  CastKickVoteSchema,
+  RestartGameSchema,
   TradeOfferSchema,
   TradeResponseSchema
 } from '../middleware/socketValidation';
@@ -935,6 +937,63 @@ export class GameController {
       } catch (err: any) {
         logger.error(`Error in pay_jail_fine for room ${roomId}`, err);
         socket.emit('error_message', err.message || 'Jail fine payment failed');
+      }
+    });
+
+    // --- 8.7 Cast Kick Vote Event ---
+    socket.on('cast_kick_vote', async (payload: any) => {
+      const roomId = this.getSocketRoom(socket);
+      if (!roomId) return socket.emit('error_message', 'Not in a game room');
+
+      try {
+        const { playerId, targetPlayerId } = CastKickVoteSchema.parse(payload);
+
+        const identityCheck = antiCheatGuard.verifySocketIdentity(socket, playerId);
+        if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
+
+        const state = await this.gameService.getRoomState(roomId);
+        if (!state) return socket.emit('error_message', 'Game session not found.');
+
+        const membershipCheck = antiCheatGuard.verifyMembership(state, playerId);
+        if (!membershipCheck.valid) return socket.emit('error_message', membershipCheck.error);
+
+        const { state: updatedState, log } = await this.gameService.castKickVote(roomId, playerId, targetPlayerId);
+
+        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
+        this.processBotTurn(roomId, updatedState);
+      } catch (err: any) {
+        logger.error(`Error in cast_kick_vote for room ${roomId}`, err);
+        socket.emit('error_message', err.message || 'Kick vote failed');
+      }
+    });
+
+    // --- 8.8 Restart Game Event ---
+    socket.on('restart_game', async (payload: any) => {
+      const roomId = this.getSocketRoom(socket);
+      if (!roomId) return socket.emit('error_message', 'Not in a game room');
+
+      try {
+        const { playerId } = RestartGameSchema.parse(payload);
+
+        const identityCheck = antiCheatGuard.verifySocketIdentity(socket, playerId);
+        if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
+
+        const state = await this.gameService.getRoomState(roomId);
+        if (!state) return socket.emit('error_message', 'Game session not found.');
+
+        const membershipCheck = antiCheatGuard.verifyMembership(state, playerId);
+        if (!membershipCheck.valid) return socket.emit('error_message', membershipCheck.error);
+
+        const updatedState = await this.gameService.restartGame(roomId, playerId);
+
+        this.io.to(roomId).emit('state_updated', {
+          state: updatedState,
+          log: `নতুন গেম শুরু! ${updatedState.players[updatedState.currentTurnPlayerId].name}-এর চাল দিয়ে শুরু হলো।`
+        });
+        this.processBotTurn(roomId, updatedState);
+      } catch (err: any) {
+        logger.error(`Error in restart_game for room ${roomId}`, err);
+        socket.emit('error_message', err.message || 'Failed to restart game');
       }
     });
 

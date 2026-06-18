@@ -205,6 +205,71 @@ export function unmortgageProperty(
 }
 
 /**
+ * Calculates rent owed at a given tile position (for bankruptcy clawback).
+ */
+export function calculateRentAtTile(
+  state: GameState,
+  tileIndex: number,
+  boardTiles: BoardTile[]
+): { ownerId: string; rentAmount: number } | null {
+  const propState = state.properties[tileIndex];
+  const destTile = boardTiles[tileIndex];
+  if (!propState?.ownerId || !destTile) return null;
+  if (propState.isMortgaged) return null;
+
+  let effectiveOwnerId = propState.ownerId;
+
+  const donPower = state.activeDonPower;
+  if (donPower && donPower.targetTileIndex === tileIndex) {
+    const donPlayer = state.players[donPower.donPlayerId];
+    if (donPlayer && !donPlayer.inJail) {
+      effectiveOwnerId = donPower.donPlayerId;
+    }
+  }
+
+  const ownerPlayer = state.players[effectiveOwnerId];
+  if (state.settings.jailLoss && ownerPlayer?.inJail) return null;
+
+  let rentAmount = 0;
+
+  if (destTile.type === 'STREET') {
+    const houses = propState.houses;
+    rentAmount = destTile.rent ? destTile.rent[houses] : 0;
+
+    if (houses === 0 && state.settings.doubleRentOnCompleteSet) {
+      const groupTiles = boardTiles.filter((t) => t.group === destTile.group);
+      const ownsFullSet = groupTiles.every((t) => {
+        const p = state.properties[t.index];
+        return p && p.ownerId === propState.ownerId;
+      });
+      if (ownsFullSet) {
+        rentAmount *= 2;
+      }
+    }
+  } else if (destTile.type === 'RAILROAD') {
+    const ownerRailroads = Object.values(state.properties).filter(
+      (p) => p.ownerId === propState.ownerId && boardTiles[p.tileIndex].type === 'RAILROAD'
+    ).length;
+    rentAmount = (destTile.rent ? destTile.rent[ownerRailroads - 1] : 25) || 25;
+  } else if (destTile.type === 'UTILITY') {
+    const ownerUtilities = Object.values(state.properties).filter(
+      (p) => p.ownerId === propState.ownerId && boardTiles[p.tileIndex].type === 'UTILITY'
+    ).length;
+    const multiplier = ownerUtilities === 2 ? 10 : 4;
+    const [d1, d2] = state.dice;
+    rentAmount = (d1 + d2) * multiplier;
+  }
+
+  if (!rentAmount || rentAmount <= 0) return null;
+
+  if (state.marketCrash?.active) {
+    rentAmount = Math.ceil(rentAmount * 1.4);
+  }
+
+  return { ownerId: effectiveOwnerId, rentAmount };
+}
+
+/**
  * Executes rent payment transfer from player to owner.
  */
 export function payRent(
