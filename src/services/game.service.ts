@@ -61,6 +61,13 @@ export class GameService {
   }
 
   /**
+   * Kicks a player from the lobby.
+   */
+  async kickPlayerFromLobby(roomId: string, hostId: string, targetId: string): Promise<{ state: GameState; log: string }> {
+    return this.roomService.kickPlayerFromLobby(roomId, hostId, targetId);
+  }
+
+  /**
    * Delegates room state retrieval to RoomService.
    */
   async getRoomState(roomId: string): Promise<GameState | null> {

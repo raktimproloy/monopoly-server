@@ -372,6 +372,35 @@ export class RoomService {
   }
 
   /**
+   * Kicks a player from the lobby if the requester is the host.
+   */
+  public async kickPlayerFromLobby(roomId: string, hostId: string, targetId: string): Promise<{ state: GameState; log: string }> {
+    const state = await this.getRoomState(roomId);
+    if (!state) throw new Error('Room not found');
+    if (state.gameStatus !== 'LOBBY') throw new Error('Game has already started.');
+
+    // Verify the kicker is the host
+    if (state.playerOrder[0] !== hostId) {
+      throw new Error('Only the host can kick players.');
+    }
+
+    // Verify the target player exists
+    const targetPlayer = state.players[targetId];
+    if (!targetPlayer) {
+      throw new Error('Target player not found.');
+    }
+
+    // Remove the player
+    delete state.players[targetId];
+    state.playerOrder = state.playerOrder.filter(id => id !== targetId);
+
+    const log = `${targetPlayer.name} has been kicked from the lobby by the host.`;
+    
+    const updatedState = await this.updateRoomState(roomId, state, hostId, 'KICK_PLAYER', { targetId });
+    return { state: updatedState, log };
+  }
+
+  /**
    * Restarts the game with the same players and settings after a finished match.
    */
   async restartGame(roomId: string, playerId: string): Promise<GameState> {

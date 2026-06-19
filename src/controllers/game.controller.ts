@@ -264,6 +264,31 @@ export class GameController {
       }
     });
 
+    // --- 1.3 Kick Player from Lobby Event ---
+    socket.on('kick_player_from_lobby', async (payload: { playerId: string, targetId: string }) => {
+      const roomId = this.getSocketRoom(socket);
+      if (!roomId) return socket.emit('error_message', 'Not in a game room');
+
+      try {
+        const { playerId, targetId } = payload;
+        const identityCheck = antiCheatGuard.verifySocketIdentity(socket, playerId);
+        if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
+
+        const state = await this.gameService.getRoomState(roomId);
+        if (!state) return socket.emit('error_message', 'Game session not found.');
+        if (state.gameStatus !== 'LOBBY') return socket.emit('error_message', 'Can only kick players from the lobby.');
+
+        const { state: updatedState, log } = await this.gameService.kickPlayerFromLobby(roomId, playerId, targetId);
+
+        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
+        this.io.to(targetId).emit('kicked_from_lobby');
+
+      } catch (err: any) {
+        logger.error(`Error in kick_player_from_lobby for room ${roomId}`, err);
+        socket.emit('error_message', err.message || 'Failed to kick player');
+      }
+    });
+
     // --- 2. Roll Dice Event ---
     socket.on('roll_dice', async (payload: any) => {
       const roomId = this.getSocketRoom(socket);
