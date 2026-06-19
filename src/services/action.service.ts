@@ -1,5 +1,5 @@
 import { RoomService } from './room.service';
-import { GameState, BoardTile } from '../../../shared/types';
+import { GameState, BoardTile } from '../types';
 import { executeMovement, payRent, calculateRentAtTile } from '../rules';
 import { generateLog } from '../utils/logGenerator';
 

@@ -11,5 +11,5 @@
     "moduleResolution": "node",
     "resolveJsonModule": true
   },
-  "include": ["src/**/*", "../shared/**/*"]
+  "include": ["src/**/*"]
 }

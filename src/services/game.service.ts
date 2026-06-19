@@ -6,7 +6,7 @@ import { PardonService } from './pardon.service';
 import { MarketCrashService } from './market_crash.service';
 import { TrafficPoliceService } from './traffic_police.service';
 import { BankService } from './bank.service';
-import { GameState, TradeOfferPayload, BoardTile } from '../../../shared/types';
+import { GameState, TradeOfferPayload, BoardTile } from '../types';
 
 export class GameService {
   private roomService: RoomService;

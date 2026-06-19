@@ -1,4 +1,4 @@
-import { GameState, Player, BoardTile } from '../../../shared/types';
+import { GameState, Player, BoardTile } from '../types';
 import { drawCard, generateLog } from '../utils/logGenerator';
 
 export interface MovementResult {

@@ -1,5 +1,5 @@
 import { RoomService } from './room.service';
-import { GameState } from '../../../shared/types';
+import { GameState } from '../types';
 import { canBuyProperty, buyProperty, canMortgageProperty, mortgageProperty, canUnmortgageProperty, unmortgageProperty, canOwnerManageHijackedProperty, applyRentDebtCollection } from '../rules';
 import { generateLog } from '../utils/logGenerator';
 

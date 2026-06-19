@@ -1,4 +1,4 @@
-import { GameState, TradeOfferPayload } from '../../../shared/types';
+import { GameState, TradeOfferPayload } from '../types';
 import { generateLog } from '../utils/logGenerator';
 import { canOwnerManageHijackedProperty } from './property.rule';
 

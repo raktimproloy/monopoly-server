@@ -1,4 +1,4 @@
-import { GameState } from '../../../shared/types';
+import { GameState } from '../types';
 import { generateLog } from '../utils/logGenerator';
 
 export class MarketCrashService {

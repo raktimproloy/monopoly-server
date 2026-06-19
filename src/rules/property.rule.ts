@@ -1,4 +1,4 @@
-import { GameState, BoardTile, PropertyState } from '../../../shared/types';
+import { GameState, BoardTile, PropertyState } from '../types';
 import { generateLog } from '../utils/logGenerator';
 
 /**

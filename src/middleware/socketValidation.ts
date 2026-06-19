@@ -1,6 +1,6 @@
 import { Socket } from 'socket.io';
 import { z } from 'zod';
-import { GameState } from '../../../shared/types';
+import { GameState } from '../types';
 import { logger } from '../utils/logger';
 
 // 1. Define Zod schemas for client event payloads (type-safety layer)

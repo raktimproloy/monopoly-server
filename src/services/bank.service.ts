@@ -1,5 +1,5 @@
 import { RoomService } from './room.service';
-import { GameState } from '../../../shared/types';
+import { GameState } from '../types';
 import { applyRentDebtCollection } from '../rules';
 
 export class BankService {

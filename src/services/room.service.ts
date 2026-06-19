@@ -1,5 +1,5 @@
 import { db } from '../config/database';
-import { GameState, Player, BoardTile, GameSettings } from '../../../shared/types';
+import { GameState, Player, BoardTile, GameSettings } from '../types';
 import { logger } from '../utils/logger';
 import { MarketCrashService } from './market_crash.service';
 

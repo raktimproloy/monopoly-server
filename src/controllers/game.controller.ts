@@ -15,7 +15,7 @@ import {
   TradeOfferSchema,
   TradeResponseSchema
 } from '../middleware/socketValidation';
-import { TradeOfferPayload } from '../../../shared/types';
+import { TradeOfferPayload } from '../types';
 
 // Simple active trade tracker for negotiation mapping
 const activeTrades: Record<string, TradeOfferPayload> = {};

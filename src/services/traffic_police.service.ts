@@ -1,4 +1,4 @@
-import { GameState, BoardTile } from '../../../shared/types';
+import { GameState, BoardTile } from '../types';
 import { generateLog } from '../utils/logGenerator';
 
 export class TrafficPoliceService {
