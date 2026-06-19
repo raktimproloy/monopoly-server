@@ -2,19 +2,29 @@ import { Client } from 'pg';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as dotenv from 'dotenv';
+import { parse } from 'pg-connection-string';
 
 dotenv.config();
 
-const connectionString = process.env.DATABASE_URL;
+const connectionString = process.env.DIRECT_URL || process.env.DATABASE_URL;
 
 if (!connectionString) {
-  console.error('Error: DATABASE_URL is not set in environment configurations.');
+  console.error('Error: DATABASE_URL or DIRECT_URL is not set in environment configurations.');
   process.exit(1);
 }
 
 async function runMigration() {
   console.log('Connecting to PostgreSQL database node...');
-  const client = new Client({ connectionString });
+  
+  const conn = connectionString!;
+  const isProductionOrCloud = conn.includes('supabase') || conn.includes('pooler') || conn.includes('render');
+  
+  const config = parse(conn) as any;
+  if (isProductionOrCloud) {
+    config.ssl = { rejectUnauthorized: false };
+  }
+  
+  const client = new Client(config);
 
   try {
     await client.connect();

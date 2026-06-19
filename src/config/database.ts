@@ -1,19 +1,30 @@
 import { Pool, PoolClient } from 'pg';
 import * as dotenv from 'dotenv';
 import { logger } from '../utils/logger';
+import { parse } from 'pg-connection-string';
 
 dotenv.config();
 
 const connectionString = process.env.DATABASE_URL;
 
-// Configure PostgreSQL connection pool
-export const pool = new Pool({
-  connectionString: connectionString,
+const isProductionOrCloud = connectionString && (connectionString.includes('supabase') || connectionString.includes('pooler') || connectionString.includes('render'));
+
+const poolConfig = connectionString ? (parse(connectionString) as any) : {
   host: process.env.DB_HOST || 'localhost',
   port: parseInt(process.env.DB_PORT || '5432'),
   user: process.env.DB_USER || 'postgres',
   password: process.env.DB_PASSWORD || 'postgres',
   database: process.env.DB_NAME || 'monopoly',
+} as any;
+
+// Override SSL for production/cloud providers
+if (isProductionOrCloud && poolConfig) {
+  poolConfig.ssl = { rejectUnauthorized: false };
+}
+
+// Configure PostgreSQL connection pool
+export const pool = new Pool({
+  ...poolConfig,
   max: 20, // Maximum number of clients in the pool
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 2000,
