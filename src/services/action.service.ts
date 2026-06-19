@@ -382,6 +382,11 @@ export class ActionService {
       delete newState.properties[p.tileIndex];
     });
 
+    // Clear Don power if the bankrupt player was the Don
+    if (newState.activeDonPower && newState.activeDonPower.donPlayerId === playerId) {
+      newState.activeDonPower = null;
+    }
+
     let description = generateLog('bankruptcyDeclared', {
       playerName: pState.name
     });
@@ -645,35 +650,45 @@ export class ActionService {
     let description = '';
 
     if (cardType === 'BECOME_A_DON') {
-      const targetTileIndex = payload.targetTileIndex;
-      const targetProperty = newState.properties[targetTileIndex];
-
-      if (!targetProperty || !targetProperty.ownerId) {
-        throw new Error('Target property is not owned by anyone.');
+      const targetTileIndexes = payload.targetTileIndexes as number[];
+      if (!targetTileIndexes || !Array.isArray(targetTileIndexes) || targetTileIndexes.length === 0 || targetTileIndexes.length > 3) {
+        throw new Error('Invalid target properties.');
       }
-      if (targetProperty.ownerId === playerId) {
-        throw new Error('You cannot hijack your own property.');
+      
+      const originalOwnerId = newState.properties[targetTileIndexes[0]]?.ownerId;
+
+      for (const index of targetTileIndexes) {
+        const targetProperty = newState.properties[index];
+        if (!targetProperty || !targetProperty.ownerId) {
+          throw new Error('Target property is not owned by anyone.');
+        }
+        if (targetProperty.ownerId === playerId) {
+          throw new Error('You cannot hijack your own property.');
+        }
+        if (targetProperty.ownerId !== originalOwnerId) {
+          throw new Error('All hijacked properties must belong to the same player.');
+        }
       }
 
       // Remove card
       const cardIndex = player.powerCards.indexOf(cardType);
       player.powerCards.splice(cardIndex, 1);
 
-      // Active players count for calculating 3 full rounds (activePlayers * 3 turns)
+      // Active players count for calculating 1 full round (activePlayers * 1 turn)
       const activePlayers = Object.values(newState.players).filter(p => !p.isBankrupt).length;
-      const totalTurns = activePlayers * 3;
+      const totalTurns = activePlayers * 1;
 
       newState.activeDonPower = {
         donPlayerId: playerId,
-        targetTileIndex: targetTileIndex,
-        originalOwnerId: targetProperty.ownerId,
+        targetTileIndexes: targetTileIndexes,
+        originalOwnerId: originalOwnerId!,
         remainingRounds: totalTurns
       };
 
       const { tiles } = await this.roomService.loadBoardTemplate();
-      const tileName = tiles.find(t => t.index === targetTileIndex)?.name || 'a property';
+      const tileNames = targetTileIndexes.map(index => tiles.find(t => t.index === index)?.name || 'a property').join(', ');
 
-      description = `🕴️ ${player.name} has become a Don! They hijacked ${tileName} for the next ${totalTurns} turns!`;
+      description = `🕴️ ${player.name} has become a Don! They hijacked ${tileNames} for the next ${totalTurns} turns!`;
     } else {
       throw new Error(`Unknown power card type: ${cardType}`);
     }

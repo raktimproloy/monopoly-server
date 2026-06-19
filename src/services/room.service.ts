@@ -144,12 +144,13 @@ export class RoomService {
     const playerOrder: string[] = [];
 
     const defaultSettings: GameSettings = {
-      startingCash: 1500,
-      doubleRentOnCompleteSet: true,
+      startingCash: 2000,
+      doubleRentOnCompleteSet: false,
       freeParkingCashPool: false,
-      allowUnpurchasedAuction: true,
-      allowMortgage: true,
-      jailLoss: false
+      allowUnpurchasedAuction: false,
+      allowMortgage: false,
+      jailLoss: false,
+      enableTrafficPolice: false
     };
 
     initialPlayers.forEach((p) => {
@@ -308,7 +309,7 @@ export class RoomService {
       newState.players[pId].balance = settings.startingCash;
     });
 
-    const log = `গেমের নিয়ম পরিবর্তন করা হয়েছে: প্রারম্ভিক টাকা ৳${settings.startingCash}, ডাবল ভাড়া: ${settings.doubleRentOnCompleteSet ? 'হ্যাঁ' : 'না'}, ফ্রি পার্কিং পুল: ${settings.freeParkingCashPool ? 'হ্যাঁ' : 'না'}, নিলাম: ${settings.allowUnpurchasedAuction ? 'হ্যাঁ' : 'না'}, মর্টগেজ: ${settings.allowMortgage ? 'হ্যাঁ' : 'না'}, জেল লস: ${settings.jailLoss ? 'হ্যাঁ' : 'না'}।`;
+    const log = `গেমের নিয়ম পরিবর্তন করা হয়েছে: প্রারম্ভিক টাকা ৳${settings.startingCash}, ফ্রি পার্কিং পুল: ${settings.freeParkingCashPool ? 'হ্যাঁ' : 'না'}, নিলাম: ${settings.allowUnpurchasedAuction ? 'হ্যাঁ' : 'না'}, মর্টগেজ: ${settings.allowMortgage ? 'হ্যাঁ' : 'না'}, জেল লস: ${settings.jailLoss ? 'হ্যাঁ' : 'না'}।`;
 
     const resultState = await this.updateRoomState(
       roomId,
@@ -396,7 +397,7 @@ export class RoomService {
 
     const log = `${targetPlayer.name} has been kicked from the lobby by the host.`;
     
-    const updatedState = await this.updateRoomState(roomId, state, hostId, 'KICK_PLAYER', { targetId });
+    const updatedState = await this.updateRoomState(roomId, state, hostId, 'KICK_PLAYER', { targetId }, log);
     return { state: updatedState, log };
   }
 
@@ -595,6 +596,11 @@ export class RoomService {
       playerProperties.forEach(p => {
         delete newState.properties[p.tileIndex];
       });
+
+      // Clear Don power if the disconnected player was the Don
+      if (newState.activeDonPower && newState.activeDonPower.donPlayerId === playerId) {
+        newState.activeDonPower = null;
+      }
 
       // Rotate turn if it was their turn
       if (newState.currentTurnPlayerId === playerId) {

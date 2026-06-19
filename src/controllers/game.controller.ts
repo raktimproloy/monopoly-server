@@ -519,11 +519,6 @@ export class GameController {
         const state = await this.gameService.getRoomState(roomId);
         if (!state) return socket.emit('error_message', 'Game session not found.');
 
-        if (state.settings.jailLoss) {
-          if (state.players[offer.senderId]?.inJail) return socket.emit('error_message', 'Jail Loss: You cannot propose trades while in jail.');
-          if (state.players[offer.receiverId]?.inJail) return socket.emit('error_message', 'Jail Loss: You cannot propose trades to a player in jail.');
-        }
-
         // Verify receiver belongs to same game
         const receiverCheck = antiCheatGuard.verifyMembership(state, offer.receiverId);
         if (!receiverCheck.valid) return socket.emit('error_message', receiverCheck.error);
@@ -772,14 +767,6 @@ export class GameController {
 
         const state = await this.gameService.getRoomState(roomId);
         if (!state) return socket.emit('error_message', 'Game session not found.');
-
-        if (state.settings.jailLoss) {
-          if (state.players[offer.senderId]?.inJail || state.players[offer.receiverId]?.inJail) {
-            delete activeTrades[tradeId];
-            this.io.to(roomId).emit('trade_resolved', { tradeId });
-            return socket.emit('error_message', 'Jail Loss: Trade cancelled because a participant is in jail.');
-          }
-        }
 
         // Clean trade record
         delete activeTrades[tradeId];

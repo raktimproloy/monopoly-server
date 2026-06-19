@@ -75,7 +75,6 @@ export class PropertyService {
   async mortgageProperty(roomId: string, playerId: string, tileIndex: number): Promise<{ state: GameState; log: string }> {
     const state = await this.roomService.getRoomState(roomId);
     if (!state) throw new Error(`Game room ${roomId} not found.`);
-    if (state.currentTurnPlayerId !== playerId) throw new Error('You can only perform this action during your turn.');
     if (state.settings.jailLoss && state.players[playerId]?.inJail) {
       throw new Error('Jail Loss: You cannot perform this action while in jail.');
     }
@@ -110,7 +109,6 @@ export class PropertyService {
   async unmortgageProperty(roomId: string, playerId: string, tileIndex: number): Promise<{ state: GameState; log: string }> {
     const state = await this.roomService.getRoomState(roomId);
     if (!state) throw new Error(`Game room ${roomId} not found.`);
-    if (state.currentTurnPlayerId !== playerId) throw new Error('You can only perform this action during your turn.');
     if (state.settings.jailLoss && state.players[playerId]?.inJail) {
       throw new Error('Jail Loss: You cannot perform this action while in jail.');
     }
@@ -142,7 +140,6 @@ export class PropertyService {
   async buildHouse(roomId: string, playerId: string, tileIndex: number): Promise<{ state: GameState; log: string }> {
     const state = await this.roomService.getRoomState(roomId);
     if (!state) throw new Error(`Game room ${roomId} not found.`);
-    if (state.currentTurnPlayerId !== playerId) throw new Error('You can only perform this action during your turn.');
     if (state.settings.jailLoss && state.players[playerId]?.inJail) {
       throw new Error('Jail Loss: You cannot perform this action while in jail.');
     }
@@ -157,7 +154,7 @@ export class PropertyService {
     }
 
     // Don Hijack check
-    if (newState.activeDonPower && newState.activeDonPower.targetTileIndex === tileIndex) {
+    if (newState.activeDonPower && newState.activeDonPower.targetTileIndexes.includes(tileIndex)) {
       throw new Error('This property is currently hijacked by the Don. Upgrades are frozen.');
     }
 
@@ -201,7 +198,6 @@ export class PropertyService {
   async sellHouse(roomId: string, playerId: string, tileIndex: number): Promise<{ state: GameState; log: string }> {
     const state = await this.roomService.getRoomState(roomId);
     if (!state) throw new Error(`Game room ${roomId} not found.`);
-    if (state.currentTurnPlayerId !== playerId) throw new Error('You can only perform this action during your turn.');
     if (state.settings.jailLoss && state.players[playerId]?.inJail) {
       throw new Error('Jail Loss: You cannot perform this action while in jail.');
     }
@@ -216,7 +212,7 @@ export class PropertyService {
     }
 
     // Don Hijack check
-    if (newState.activeDonPower && newState.activeDonPower.targetTileIndex === tileIndex) {
+    if (newState.activeDonPower && newState.activeDonPower.targetTileIndexes.includes(tileIndex)) {
       throw new Error('This property is currently hijacked by the Don. Downgrades are frozen.');
     }
 
@@ -259,7 +255,6 @@ export class PropertyService {
   async sellProperty(roomId: string, playerId: string, tileIndex: number): Promise<{ state: GameState; log: string }> {
     const state = await this.roomService.getRoomState(roomId);
     if (!state) throw new Error(`Game room ${roomId} not found.`);
-    if (state.currentTurnPlayerId !== playerId) throw new Error('You can only perform this action during your turn.');
     if (state.settings.jailLoss && state.players[playerId]?.inJail) {
       throw new Error('Jail Loss: You cannot perform this action while in jail.');
     }
@@ -314,9 +309,6 @@ export class PropertyService {
   async auctionProperty(roomId: string, playerId: string, tileIndex: number): Promise<{ state: GameState; log: string }> {
     const state = await this.roomService.getRoomState(roomId);
     if (!state) throw new Error(`Game room ${roomId} not found.`);
-    if (state.settings.jailLoss && state.players[playerId]?.inJail) {
-      throw new Error('Jail Loss: You cannot perform this action while in jail.');
-    }
     if (state.currentTurnPlayerId !== playerId) throw new Error('You can only perform this action during your turn.');
 
     const { tiles } = await this.roomService.loadBoardTemplate();
@@ -370,9 +362,6 @@ export class PropertyService {
   async placeBid(roomId: string, playerId: string, amountToAdd: number): Promise<{ state: GameState; log: string }> {
     const state = await this.roomService.getRoomState(roomId);
     if (!state) throw new Error(`Game room ${roomId} not found.`);
-    if (state.settings.jailLoss && state.players[playerId]?.inJail) {
-      throw new Error('Jail Loss: You cannot perform this action while in jail.');
-    }
 
     const newState = JSON.parse(JSON.stringify(state)) as GameState & { activeAuction?: any };
     const auction = newState.activeAuction;

@@ -94,7 +94,7 @@ export function buyProperty(
  */
 export function isPropertyHijackedByDon(state: GameState, tileIndex: number): boolean {
   const donPower = state.activeDonPower;
-  if (!donPower || donPower.targetTileIndex !== tileIndex) return false;
+  if (!donPower || !donPower.targetTileIndexes.includes(tileIndex)) return false;
   const donPlayer = state.players[donPower.donPlayerId];
   return !!(donPlayer && !donPlayer.inJail);
 }
@@ -107,7 +107,7 @@ export function canOwnerManageHijackedProperty(
   const donPower = state.activeDonPower;
   if (
     donPower &&
-    donPower.targetTileIndex === tileIndex &&
+    donPower.targetTileIndexes.includes(tileIndex) &&
     donPower.originalOwnerId === playerId &&
     isPropertyHijackedByDon(state, tileIndex)
   ) {
@@ -253,7 +253,7 @@ export function calculateRentAtTile(
   let effectiveOwnerId = propState.ownerId;
 
   const donPower = state.activeDonPower;
-  if (donPower && donPower.targetTileIndex === tileIndex) {
+  if (donPower && donPower.targetTileIndexes.includes(tileIndex)) {
     const donPlayer = state.players[donPower.donPlayerId];
     if (donPlayer && !donPlayer.inJail) {
       effectiveOwnerId = donPower.donPlayerId;

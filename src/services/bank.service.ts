@@ -1,5 +1,6 @@
 import { RoomService } from './room.service';
 import { GameState } from '../../../shared/types';
+import { applyRentDebtCollection } from '../rules';
 
 export class BankService {
   private roomService: RoomService;
@@ -55,11 +56,17 @@ export class BankService {
       deductionPerTurn
     };
 
-    const description = `🏦 ${pState.name} has taken a loan of ৳${amount} from the Government Bank at ${interestRate}% interest.`;
+    let description = `🏦 ${pState.name} has taken a loan of ৳${amount} from the Government Bank at ${interestRate}% interest.`;
+
+    const debtResult = applyRentDebtCollection(newState, playerId);
+    let finalState = debtResult.newState;
+    if (debtResult.extraDescription) {
+      description += debtResult.extraDescription;
+    }
 
     const savedState = await this.roomService.updateRoomState(
       roomId,
-      newState,
+      finalState,
       playerId,
       'TAKE_LOAN',
       { amount },

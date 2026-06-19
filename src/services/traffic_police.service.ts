@@ -28,10 +28,10 @@ export class TrafficPoliceService {
 
     const randomTile = purchasableTiles[this.randomBetween(0, purchasableTiles.length - 1)];
 
-    newState.trafficPolice.active = true;
-    newState.trafficPolice.position = randomTile.index;
-    newState.trafficPolice.nextAppearanceTime = null;
-    newState.trafficPolice.disappearanceTime = Date.now() + this.randomBetween(3, 4) * 60 * 1000;
+    newState.trafficPolice!.active = true;
+    newState.trafficPolice!.position = randomTile.index;
+    newState.trafficPolice!.nextAppearanceTime = null;
+    newState.trafficPolice!.disappearanceTime = Date.now() + this.randomBetween(3, 4) * 60 * 1000;
 
     return {
       newState,
@@ -46,10 +46,10 @@ export class TrafficPoliceService {
     const newState = JSON.parse(JSON.stringify(state)) as GameState;
     if (!newState.trafficPolice) return { newState, log: '' };
 
-    newState.trafficPolice.active = false;
-    newState.trafficPolice.position = null;
-    newState.trafficPolice.disappearanceTime = null;
-    newState.trafficPolice.nextAppearanceTime = Date.now() + this.randomBetween(5, 7) * 60 * 1000;
+    newState.trafficPolice!.active = false;
+    newState.trafficPolice!.position = null;
+    newState.trafficPolice!.disappearanceTime = null;
+    newState.trafficPolice!.nextAppearanceTime = Date.now() + this.randomBetween(5, 7) * 60 * 1000;
 
     return {
       newState,
@@ -115,13 +115,13 @@ export class TrafficPoliceService {
     }
     
     // Remove currently active police if any
-    if (newState.trafficPolice.active) {
-      newState.trafficPolice.active = false;
-      newState.trafficPolice.position = null;
-      newState.trafficPolice.disappearanceTime = null;
+    if (newState.trafficPolice!.active) {
+      newState.trafficPolice!.active = false;
+      newState.trafficPolice!.position = null;
+      newState.trafficPolice!.disappearanceTime = null;
     }
 
-    newState.trafficPolice.nextAppearanceTime = Date.now() + delayMinutes * 60 * 1000;
+    newState.trafficPolice!.nextAppearanceTime = Date.now() + delayMinutes * 60 * 1000;
 
     return {
       newState,

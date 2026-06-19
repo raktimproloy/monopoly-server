@@ -44,11 +44,12 @@ export function executeMovement(
     } else {
       player.jailTurns += 1;
       if (player.jailTurns >= 3) {
-        // Must pay $50 to get out on 3rd fail
+        // Just get out of jail on 3rd fail without paying and without moving
         player.inJail = false;
         player.jailTurns = 0;
-        player.balance -= 50;
-      description += ` ➡️ জেল জরিমানা ৳50।`;
+        description += ` ➡️ ৩ বারেও ডাবল না পড়ায় জেল থেকে মুক্তি! (কোনো জরিমানা নেই, কিন্তু দান এখানেই শেষ)।`;
+        newState.turnStatus = 'MUST_ACT_OR_END';
+        return { newState, description, nextAction: 'NONE' };
       } else {
         description += ` ➡️ জেলে আছেন (${player.jailTurns}/3)।`;
         newState.turnStatus = 'MUST_ACT_OR_END';
@@ -67,7 +68,7 @@ export function executeMovement(
       player.position = 10; // Jail position index
       newState.doubleRollCount = 0;
       newState.turnStatus = 'MUST_ACT_OR_END';
-      description += ` ➡️ ৩ ডাবলে সোজা জেলে!`;
+      description += ` ➡️ পরপর ৩ বার একই দান (ডাবল) পড়ায় জেলে পাঠানো হলো!`;
       return { newState, description, nextAction: 'NONE' };
     }
   } else {
@@ -258,7 +259,7 @@ export function executeMovement(
       let isHijacked = false;
       const donPower = newState.activeDonPower;
       
-      if (donPower && donPower.targetTileIndex === newPosition) {
+      if (donPower && donPower.targetTileIndexes.includes(newPosition)) {
         const donPlayer = newState.players[donPower.donPlayerId];
         if (donPlayer && !donPlayer.inJail) {
           effectiveOwnerId = donPower.donPlayerId;
