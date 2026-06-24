@@ -7,7 +7,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "bun --watch src/index.ts",
-    "migrate": "ts-node src/migrate.ts"
+    "migrate": "ts-node src/migrate.ts",
+    "migrate:prod": "node dist/migrate.js"
   },
   "dependencies": {
     "@types/cors": "^2.8.19",

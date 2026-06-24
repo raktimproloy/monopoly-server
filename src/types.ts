@@ -86,6 +86,7 @@ export interface GameState {
   properties: Record<number, PropertyState>;
   dice: [number, number];
   doubleRollCount: number;
+  rollCounter?: number;
   gameStatus: GameStatus;
   winnerId: string | null;
   turnStatus: 'MUST_ROLL' | 'MUST_ACT_OR_END' | 'BANKRUPTCY_PENDING' | 'MUST_RESOLVE_CARD' | 'MUST_RESOLVE_LOTTERY';
