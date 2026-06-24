@@ -816,6 +816,11 @@ export class GameController {
           return socket.emit('error_message', 'You must roll the dice before ending your turn.');
         }
 
+        // Lottery guard
+        if (state.activeLottery && !state.activeLottery.isComplete) {
+          return socket.emit('error_message', 'লটারি শেষ হয়নি!');
+        }
+
         const { state: updatedState, log } = await this.gameService.endTurn(roomId, playerId);
 
         this.io.to(roomId).emit('state_updated', { state: updatedState, log });
@@ -824,6 +829,42 @@ export class GameController {
       } catch (err: any) {
         logger.error(`Error in end_turn for room ${roomId}`, err);
         socket.emit('error_message', err.message || 'Validation error');
+      }
+    });
+
+    // --- 8.4 Lottery Start Event ---
+    socket.on('lottery_start', async (payload: any) => {
+      const roomId = this.getSocketRoom(socket);
+      if (!roomId) return socket.emit('error_message', 'Not in a game room');
+      try {
+        const { playerId } = payload || {};
+        const identityCheck = antiCheatGuard.verifySocketIdentity(socket, playerId || userId);
+        if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
+
+        const { state: updatedState, log } = await this.gameService.startLottery(roomId, playerId || userId);
+        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
+        this.processBotTurn(roomId, updatedState);
+      } catch (err: any) {
+        logger.error(`Error in lottery_start for room ${roomId}`, err);
+        socket.emit('error_message', err.message || 'Failed to start lottery');
+      }
+    });
+
+    // --- 8.5 Lottery Reveal Event ---
+    socket.on('lottery_reveal', async (payload: any) => {
+      const roomId = this.getSocketRoom(socket);
+      if (!roomId) return socket.emit('error_message', 'Not in a game room');
+      try {
+        const { playerId } = payload || {};
+        const identityCheck = antiCheatGuard.verifySocketIdentity(socket, playerId || userId);
+        if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
+
+        const { state: updatedState, log } = await this.gameService.revealLotteryDigit(roomId, playerId || userId);
+        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
+        this.processBotTurn(roomId, updatedState);
+      } catch (err: any) {
+        logger.error(`Error in lottery_reveal for room ${roomId}`, err);
+        socket.emit('error_message', err.message || 'Failed to reveal lottery digit');
       }
     });
 
@@ -1077,6 +1118,20 @@ export class GameController {
           const { state: updatedState, log } = await this.gameService.resolveCard(roomId, currentTurnPlayerId);
           this.io.to(roomId).emit('state_updated', { state: updatedState, log });
           this.processBotTurn(roomId, updatedState);
+        } else if (latestState.turnStatus === 'MUST_RESOLVE_LOTTERY') {
+          // Bot auto-starts and auto-reveals all lottery digits
+          let currentBotState = latestState;
+          if (currentBotState.activeLottery && !currentBotState.activeLottery.hasStarted) {
+            const { state: startedState, log: startLog } = await this.gameService.startLottery(roomId, currentTurnPlayerId);
+            this.io.to(roomId).emit('state_updated', { state: startedState, log: startLog });
+            currentBotState = startedState;
+          }
+          while (currentBotState.activeLottery && !currentBotState.activeLottery.isComplete) {
+            const { state: revealedState, log: revealLog } = await this.gameService.revealLotteryDigit(roomId, currentTurnPlayerId);
+            this.io.to(roomId).emit('state_updated', { state: revealedState, log: revealLog });
+            currentBotState = revealedState;
+          }
+          this.processBotTurn(roomId, currentBotState);
         }
       } catch (err) {
         logger.error(`Bot AI error in room ${roomId}`, err);

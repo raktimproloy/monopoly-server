@@ -1,4 +1,8 @@
 import { db } from '../config/database';
+import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
+import { toBanglaNum } from '../utils/format';
 import { GameState, Player, BoardTile, GameSettings } from '../types';
 import { logger } from '../utils/logger';
 import { MarketCrashService } from './market_crash.service';
@@ -94,7 +98,7 @@ export const STANDARD_TILES_FALLBACK: BoardTile[] = [
   { index: 35, name: "ঢাকা রেল", type: "RAILROAD", price: 200, rent: [25, 50, 100, 200], mortgageValue: 100 },
   { index: 36, name: "ভাগ্য পরীক্ষা", type: "CHANCE" },
   { index: 37, name: "গুলশান (ঢাকা)", type: "STREET", price: 350, rent: [35, 175, 500, 1100, 1300, 1500], mortgageValue: 175, houseCost: 200, group: "Dark Blue" },
-  { index: 38, name: "আয়কর", type: "TAX", price: 100 },
+  { index: 38, name: "লটারি", type: "LOTTERY" },
   { index: 39, name: "ঢাকা (ঢাকা)", type: "STREET", price: 400, rent: [50, 200, 600, 1400, 1700, 2000], mortgageValue: 200, houseCost: 200, group: "Dark Blue" }
 ];
 
@@ -309,7 +313,7 @@ export class RoomService {
       newState.players[pId].balance = settings.startingCash;
     });
 
-    const log = `গেমের নিয়ম পরিবর্তন করা হয়েছে: প্রারম্ভিক টাকা ৳${settings.startingCash}, ফ্রি পার্কিং পুল: ${settings.freeParkingCashPool ? 'হ্যাঁ' : 'না'}, নিলাম: ${settings.allowUnpurchasedAuction ? 'হ্যাঁ' : 'না'}, মর্টগেজ: ${settings.allowMortgage ? 'হ্যাঁ' : 'না'}, জেল লস: ${settings.jailLoss ? 'হ্যাঁ' : 'না'}।`;
+    const log = `গেমের নিয়ম পরিবর্তন করা হয়েছে: প্রারম্ভিক টাকা ৳${toBanglaNum(settings.startingCash)}, ফ্রি পার্কিং পুল: ${settings.freeParkingCashPool ? 'হ্যাঁ' : 'না'}, নিলাম: ${settings.allowUnpurchasedAuction ? 'হ্যাঁ' : 'না'}, মর্টগেজ: ${settings.allowMortgage ? 'হ্যাঁ' : 'না'}, জেল লস: ${settings.jailLoss ? 'হ্যাঁ' : 'না'}।`;
 
     const resultState = await this.updateRoomState(
       roomId,

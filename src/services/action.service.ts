@@ -2,6 +2,7 @@ import { RoomService } from './room.service';
 import { GameState, BoardTile } from '../types';
 import { executeMovement, payRent, calculateRentAtTile } from '../rules';
 import { generateLog } from '../utils/logGenerator';
+import { toBanglaNum } from '../utils/format';
 
 export class ActionService {
   private roomService: RoomService;
@@ -41,16 +42,16 @@ export class ActionService {
    */
   async rollDice(roomId: string, playerId: string): Promise<{ state: GameState; log: string }> {
     const state = await this.roomService.getRoomState(roomId);
-    if (!state) throw new Error(`Game room ${roomId} not found.`);
+    if (!state) throw new Error(`গেম রুম ${roomId} পাওয়া যায়নি।`);
 
     if (state.turnStatus !== 'MUST_ROLL') {
-      throw new Error(`Cannot roll dice. Current turn status is ${state.turnStatus}.`);
+      throw new Error(`ডাইস রোল করা সম্ভব নয়। বর্তমান স্ট্যাটাস: ${state.turnStatus}।`);
     }
 
     const { tiles } = await this.roomService.loadBoardTemplate();
 
     const player = state.players[playerId];
-    if (!player) throw new Error(`Player ${playerId} not found.`);
+    if (!player) throw new Error(`প্লেয়ার ${playerId} পাওয়া যায়নি।`);
 
     const newState = JSON.parse(JSON.stringify(state)) as GameState;
     const pState = newState.players[playerId];
@@ -61,6 +62,8 @@ export class ActionService {
       Math.floor(Math.random() * 6) + 1,
       Math.floor(Math.random() * 6) + 1
     ];
+
+    newState.rollCounter = (newState.rollCounter || 0) + 1;
 
     const { newState: updatedState, description, nextAction, rentDuePlayerId, rentAmount } = executeMovement(
       newState,
@@ -98,15 +101,15 @@ export class ActionService {
    */
   async devAddFunds(roomId: string, playerId: string, amount: number): Promise<{ state: GameState; log: string }> {
     const state = await this.roomService.getRoomState(roomId);
-    if (!state) throw new Error(`Game room ${roomId} not found.`);
+    if (!state) throw new Error(`গেম রুম ${roomId} পাওয়া যায়নি।`);
 
     const player = state.players[playerId];
-    if (!player) throw new Error(`Player ${playerId} not found.`);
+    if (!player) throw new Error(`প্লেয়ার ${playerId} পাওয়া যায়নি।`);
 
     const newState = JSON.parse(JSON.stringify(state)) as GameState;
     newState.players[playerId].balance += amount;
 
-    const description = `🔧 DEV: ${player.name}-কে ৳${amount} প্রদান করা হয়েছে।`;
+    const description = `🔧 DEV: ${player.name}-কে ৳${toBanglaNum(amount)} প্রদান করা হয়েছে।`;
 
     const savedState = await this.roomService.updateRoomState(
       roomId,
@@ -125,7 +128,7 @@ export class ActionService {
    */
   async devTeleport(roomId: string, playerId: string, targetIndex: number): Promise<{ state: GameState; log: string }> {
     const state = await this.roomService.getRoomState(roomId);
-    if (!state) throw new Error(`Game room ${roomId} not found.`);
+    if (!state) throw new Error(`গেম রুম ${roomId} পাওয়া যায়নি।`);
 
     const { tiles } = await this.roomService.loadBoardTemplate();
     
@@ -143,7 +146,7 @@ export class ActionService {
     );
 
     let finalState = newState;
-    let finalDescription = `[DEV] ${newState.players[playerId].name} teleported to tile ${targetIndex}.`;
+    let finalDescription = `[DEV] ${newState.players[playerId].name} টেলিপোর্ট করে ${targetIndex} নম্বর টাইল-এ গেছেন।`;
     
     // Extract just the landing logic from the movement rule's description
     const actionMatch = description.match(/\.\s*(Landed on.+|Paid.+|Sent directly to Jail.+)/);
@@ -186,11 +189,12 @@ export class ActionService {
    */
   async devRollDice(roomId: string, playerId: string, d1: number, d2: number): Promise<{ state: GameState; log: string }> {
     const state = await this.roomService.getRoomState(roomId);
-    if (!state) throw new Error(`Game room ${roomId} not found.`);
+    if (!state) throw new Error(`গেম রুম ${roomId} পাওয়া যায়নি।`);
 
     const { tiles } = await this.roomService.loadBoardTemplate();
 
     const dice: [number, number] = [d1, d2];
+    state.rollCounter = (state.rollCounter || 0) + 1;
 
     const { newState, description, nextAction, rentDuePlayerId, rentAmount } = executeMovement(
       state,
@@ -239,17 +243,23 @@ export class ActionService {
    */
   async endTurn(roomId: string, playerId: string): Promise<{ state: GameState; log: string }> {
     const state = await this.roomService.getRoomState(roomId);
-    if (!state) throw new Error(`Game room ${roomId} not found.`);
+    if (!state) throw new Error(`গেম রুম ${roomId} পাওয়া যায়নি।`);
 
     const player = state.players[playerId];
+
+    // Block ending turn while lottery is active
+    if (state.activeLottery && !state.activeLottery.isComplete) {
+      throw new Error('লটারি শেষ হয়নি! লটারি ম্যাচিং সম্পূর্ণ না হওয়া পর্যন্ত টার্ন শেষ করা যাবে না।');
+    }
+
     if (player.balance < 0) {
-      throw new Error('You cannot end your turn while your cash balance is negative! Sell assets or declare bankruptcy.');
+      throw new Error('আপনার ব্যালেন্স নেতিবাচক, টার্ন শেষ করা সম্ভব নয়! সম্পত্তি বিক্রি করুন বা দেউলিয়া ঘোষণা করুন।');
     }
     if (
       state.pendingRentOwed?.debtorId === playerId &&
       state.pendingRentOwed.remainingAmount > 0
     ) {
-      throw new Error('You still owe rent! Mortgage or sell assets to pay the property owner, or declare bankruptcy.');
+      throw new Error('আপনাকে এখনো ভাড়া পরিশোধ করতে হবে! সম্পত্তি মর্টগেজ করুন বা বিক্রি করে পরিশোধ করুন, অথবা দেউলিয়া ঘোষণা করুন।');
     }
 
     const newState = JSON.parse(JSON.stringify(state)) as GameState;
@@ -320,7 +330,7 @@ export class ActionService {
     if (newState.activeDonPower) {
       newState.activeDonPower.remainingRounds -= 1;
       if (newState.activeDonPower.remainingRounds <= 0) {
-        description += ` 🚔 Don power expired! The property has been returned to its original owner.`;
+        description += ` 🚔 ডন পাওয়ারের মেয়াদ শেষ! সম্পত্তি তার আসল মালিকের কাছে ফেরত গেছে।`;
         newState.activeDonPower = null;
       }
     }
@@ -347,11 +357,11 @@ export class ActionService {
    */
   async declareBankruptcy(roomId: string, playerId: string): Promise<{ state: GameState; log: string }> {
     const state = await this.roomService.getRoomState(roomId);
-    if (!state) throw new Error(`Game room ${roomId} not found.`);
+    if (!state) throw new Error(`গেম রুম ${roomId} পাওয়া যায়নি।`);
 
     const player = state.players[playerId];
-    if (!player) throw new Error(`Player ${playerId} not found.`);
-    if (player.isBankrupt) throw new Error(`Player ${playerId} is already bankrupt.`);
+    if (!player) throw new Error(`প্লেয়ার ${playerId} পাওয়া যায়নি।`);
+    if (player.isBankrupt) throw new Error(`প্লেয়ার ${playerId} ইতিমধ্যে দেউলিয়া।`);
 
     const newState = JSON.parse(JSON.stringify(state)) as GameState;
     const pState = newState.players[playerId];
@@ -410,7 +420,7 @@ export class ActionService {
         newState.turnStatus = 'MUST_ROLL';
       }
       newState.doubleRollCount = 0;
-      description += ` It is now ${newState.players[nextPlayerId].name}'s turn.`;
+      description += ` এখন ${newState.players[nextPlayerId].name}-এর চাল।`;
     }
 
     // Check if game is finished (only 1 non-bankrupt player left)
@@ -419,7 +429,7 @@ export class ActionService {
       newState.gameStatus = 'FINISHED';
       newState.winnerId = activePlayers[0]?.id || null;
       if (newState.winnerId) {
-        description += ` Game over! ${newState.players[newState.winnerId].name} is the winner!`;
+        description += ` খেলা শেষ! ${newState.players[newState.winnerId].name} বিজয়ী হয়েছেন!`;
       }
     }
 
@@ -440,12 +450,12 @@ export class ActionService {
    */
   async payJailFine(roomId: string, playerId: string): Promise<{ state: GameState; log: string }> {
     const state = await this.roomService.getRoomState(roomId);
-    if (!state) throw new Error(`Game room ${roomId} not found.`);
+    if (!state) throw new Error(`গেম রুম ${roomId} পাওয়া যায়নি।`);
 
     const player = state.players[playerId];
-    if (!player) throw new Error(`Player ${playerId} not found.`);
-    if (!player.inJail) throw new Error(`Player ${playerId} is not in jail.`);
-    if (player.balance < 50) throw new Error(`Insufficient funds. Paying jail fine costs ৳50, you have ৳${player.balance}.`);
+    if (!player) throw new Error(`প্লেয়ার ${playerId} পাওয়া যায়নি।`);
+    if (!player.inJail) throw new Error(`প্লেয়ার ${playerId} জেলে নেই।`);
+    if (player.balance < 50) throw new Error(`পর্যাপ্ত ব্যালেন্স নেই। জেল থেকে বের হওয়ার জরিমানা ৳৫০, কিন্তু আপনার আছে ৳${toBanglaNum(player.balance)}।`);
 
     const newState = JSON.parse(JSON.stringify(state)) as GameState;
     const pState = newState.players[playerId];
@@ -513,18 +523,18 @@ export class ActionService {
    */
   async resolveCard(roomId: string, playerId: string): Promise<{ state: GameState; log: string }> {
     const state = await this.roomService.getRoomState(roomId);
-    if (!state) throw new Error(`Game room ${roomId} not found.`);
+    if (!state) throw new Error(`গেম রুম ${roomId} পাওয়া যায়নি।`);
 
     if (state.turnStatus !== 'MUST_RESOLVE_CARD') {
-      throw new Error(`Cannot resolve card. Turn status is ${state.turnStatus}.`);
+      throw new Error(`কার্ড রিজলভ করা সম্ভব নয়। স্ট্যাটাস: ${state.turnStatus}।`);
     }
     if (state.currentTurnPlayerId !== playerId) {
-      throw new Error(`Not your turn to resolve card.`);
+      throw new Error(`এখন আপনার কার্ড রিজলভ করার পালা নয়।`);
     }
 
     const card = state.drawnCard;
     if (!card) {
-      throw new Error(`No card drawn to resolve.`);
+      throw new Error(`রিজলভ করার জন্য কোনো কার্ড নেই।`);
     }
 
     const { tiles: boardTiles } = await this.roomService.loadBoardTemplate();
@@ -560,7 +570,7 @@ export class ActionService {
             if (newPos === 0) {
               player.balance += 300;
               newState.governmentBank.balance -= 300;
-              description += ` এবং ঠিক 'শুরু' (GO) ঘরে এসে থেমেছেন, তাই ৳300 বোনাস পেয়েছেন।`;
+              description += ` এবং ঠিক 'শুরু' (GO) ঘরে এসে থেমেছেন, তাই ৳${toBanglaNum(300)} বোনাস পেয়েছেন।`;
             } else {
               player.balance += 200; // Passed GO
               newState.governmentBank.balance -= 200;
@@ -579,6 +589,30 @@ export class ActionService {
         player.powerCards = player.powerCards || [];
         player.powerCards.push('BECOME_A_DON');
         break;
+      case 'BIRTHDAY_GIFT': {
+        const giftAmount = card.value || 50;
+        const activeOtherPlayers = Object.values(newState.players).filter(
+          (p) => p.id !== playerId && !p.isBankrupt
+        );
+        for (const otherPlayer of activeOtherPlayers) {
+          otherPlayer.balance -= giftAmount;
+          player.balance += giftAmount;
+        }
+        description += ` (অন্যান্য ${toBanglaNum(activeOtherPlayers.length)} জন সক্রিয় খেলোয়াড় প্রত্যেকে আপনাকে ৳${toBanglaNum(giftAmount)} করে দিয়েছেন)`;
+        break;
+      }
+      case 'NEW_JOB_CELEBRATION': {
+        const giftAmount = card.value || 50;
+        const activeOtherPlayers = Object.values(newState.players).filter(
+          (p) => p.id !== playerId && !p.isBankrupt
+        );
+        for (const otherPlayer of activeOtherPlayers) {
+          player.balance -= giftAmount;
+          otherPlayer.balance += giftAmount;
+        }
+        description += ` (আপনি অন্যান্য ${toBanglaNum(activeOtherPlayers.length)} জন সক্রিয় খেলোয়াড়কে প্রত্যেকে ৳${toBanglaNum(giftAmount)} করে দিয়েছেন)`;
+        break;
+      }
     }
 
     if (card.isSecret) {
@@ -597,6 +631,106 @@ export class ActionService {
       playerId,
       'RESOLVE_CARD',
       { cardAction: card.action },
+      description
+    );
+
+    return { state: savedState, log: description };
+  }
+
+  /**
+   * Starts the lottery (hasStarted = true).
+   */
+  async startLottery(roomId: string, playerId: string): Promise<{ state: GameState; log: string }> {
+    const state = await this.roomService.getRoomState(roomId);
+    if (!state) throw new Error(`গেম রুম ${roomId} পাওয়া যায়নি।`);
+
+    if (!state.activeLottery) {
+      throw new Error('কোনো লটারি সচল নেই।');
+    }
+    if (state.activeLottery.hasStarted) {
+      throw new Error('লটারি ইতিমধ্যে শুরু হয়েছে।');
+    }
+    if (state.currentTurnPlayerId !== playerId) {
+      throw new Error('এখন আপনার লটারি শুরু করার পালা নয়।');
+    }
+
+    const newState = JSON.parse(JSON.stringify(state)) as GameState;
+    newState.activeLottery!.hasStarted = true;
+
+    const savedState = await this.roomService.updateRoomState(
+      roomId,
+      newState,
+      playerId,
+      'START_LOTTERY',
+      {},
+      `🎰 ${newState.players[playerId].name} লটারি শুরু করেছেন!`
+    );
+
+    return { state: savedState, log: `🎰 ${newState.players[playerId].name} লটারি শুরু করেছেন!` };
+  }
+
+  /**
+   * Reveals the next character of the lottery winning code.
+   * Called repeatedly (one at a time) until all 5 characters are revealed.
+   */
+  async revealLotteryDigit(roomId: string, playerId: string): Promise<{ state: GameState; log: string }> {
+    const state = await this.roomService.getRoomState(roomId);
+    if (!state) throw new Error(`গেম রুম ${roomId} পাওয়া যায়নি।`);
+
+    if (!state.activeLottery) {
+      throw new Error('লটারি সচল নেই।');
+    }
+    if (!state.activeLottery.hasStarted) {
+      throw new Error('লটারি শুরু হয়নি।');
+    }
+    if (state.activeLottery.isComplete) {
+      throw new Error('লটারি ইতিমধ্যে শেষ হয়েছে।');
+    }
+    if (state.currentTurnPlayerId !== playerId) {
+      throw new Error('আপনার লটারি দেখার পালা নয়।');
+    }
+
+    const newState = JSON.parse(JSON.stringify(state)) as GameState;
+    const lottery = newState.activeLottery!;
+    const player = newState.players[playerId];
+
+    // Reveal next character
+    lottery.revealedCount += 1;
+
+    let description = '';
+    const revealedIdx = lottery.revealedCount - 1;
+    const playerChar = lottery.playerTicket[revealedIdx];
+    const winChar = lottery.winningCode[revealedIdx];
+    const matched = playerChar === winChar;
+
+    if (matched) {
+      lottery.prizeAmount += 100;
+    }
+
+    description = `🎰 লটারি ডিজিট ${toBanglaNum(lottery.revealedCount)}/৫: ${winChar} ${matched ? '✅ (+৳১০০)' : '❌'}`;
+
+    // Check if all 5 revealed
+    if (lottery.revealedCount >= 5) {
+      lottery.isComplete = true;
+      lottery.isWinner = lottery.prizeAmount > 0;
+
+      if (lottery.isWinner) {
+        player.balance += lottery.prizeAmount;
+        newState.governmentBank.balance -= lottery.prizeAmount;
+        description = `🎰🎉 ${player.name} লটারিতে ৳${toBanglaNum(lottery.prizeAmount)} জিতেছেন!`;
+      } else {
+        description = `🎰 ${player.name} এর লটারি শেষ — কোনো মিল হয়নি।`;
+      }
+
+      newState.turnStatus = 'MUST_ACT_OR_END';
+    }
+
+    const savedState = await this.roomService.updateRoomState(
+      roomId,
+      newState,
+      playerId,
+      'LOTTERY_REVEAL',
+      { revealedCount: lottery.revealedCount },
       description
     );
 

@@ -110,6 +110,20 @@ export class GameService {
   }
 
   /**
+   * Delegates starting the lottery to ActionService.
+   */
+  async startLottery(roomId: string, playerId: string): Promise<{ state: GameState; log: string }> {
+    return this.actionService.startLottery(roomId, playerId);
+  }
+
+  /**
+   * Delegates revealing the next lottery digit to ActionService.
+   */
+  async revealLotteryDigit(roomId: string, playerId: string): Promise<{ state: GameState; log: string }> {
+    return this.actionService.revealLotteryDigit(roomId, playerId);
+  }
+
+  /**
    * Delegates buying property to PropertyService.
    */
   async buyProperty(roomId: string, playerId: string, tileIndex: number): Promise<{ state: GameState; log: string }> {

@@ -88,7 +88,7 @@ export interface GameState {
   doubleRollCount: number;
   gameStatus: GameStatus;
   winnerId: string | null;
-  turnStatus: 'MUST_ROLL' | 'MUST_ACT_OR_END' | 'BANKRUPTCY_PENDING' | 'MUST_RESOLVE_CARD';
+  turnStatus: 'MUST_ROLL' | 'MUST_ACT_OR_END' | 'BANKRUPTCY_PENDING' | 'MUST_RESOLVE_CARD' | 'MUST_RESOLVE_LOTTERY';
   settings: GameSettings;
   freeParkingPool?: number;
   activeAuction?: AuctionState;
@@ -109,6 +109,8 @@ export interface GameState {
   kickVotes?: Record<string, string>; // voterId -> targetPlayerId to kick
   /** Remaining rent owed after pocket-only payment on landing */
   pendingRentOwed?: PendingRentOwed | null;
+  /** Active lottery state when a player lands on the LOTTERY tile */
+  activeLottery?: LotteryState | null;
 }
 
 export type TileType =
@@ -121,7 +123,8 @@ export type TileType =
   | 'CHEST'
   | 'JAIL'
   | 'GO_TO_JAIL'
-  | 'FREE_PARKING';
+  | 'FREE_PARKING'
+  | 'LOTTERY';
 
 export interface BoardTile {
   index: number;
@@ -226,4 +229,16 @@ export interface PlaceBidPayload {
 export interface KickVotePayload {
   playerId: string;
   targetPlayerId: string;
+}
+
+export interface LotteryState {
+  playerId: string;          // Who triggered the lottery
+  playerName: string;        // Display name of the player
+  playerTicket: string;      // The 5-char code the player got (e.g. "OI3A7")
+  winningCode: string;       // The target 5-char code for matching
+  revealedCount: number;     // How many chars revealed so far (0–5)
+  isComplete: boolean;       // Whether matching animation is done
+  isWinner: boolean;         // Did they win 500?
+  hasStarted: boolean;       // Has the player clicked start?
+  prizeAmount: number;       // Accumulated prize (100 per match)
 }

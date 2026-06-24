@@ -1,5 +1,6 @@
 import { GameState, Player, BoardTile } from '../types';
 import { drawCard, generateLog } from '../utils/logGenerator';
+import { toBanglaNum } from '../utils/format';
 
 export interface MovementResult {
   newState: GameState;
@@ -92,29 +93,18 @@ export function executeMovement(
     }
 
     if (passedPolice) {
-      const isBigReason = Math.random() < 0.10; // 10% chance to go to jail
-      if (isBigReason) {
-        description += ` 🚓 ট্রাফিক পুলিশের হাতে ধরা! পুলিশ অফিসারের গায়ে গাড়ি তুলে দেয়ার চেষ্টায় সোজা জেলে! (কোনো জরিমানা নেই)`;
-        player.inJail = true;
-        player.jailTurns = 0;
-        player.position = 10;
-        newState.doubleRollCount = 0;
-        newState.turnStatus = 'MUST_ACT_OR_END';
-        return { newState, description, nextAction: 'NONE' };
-      } else {
-        const fineAmount = Math.floor(Math.random() * (80 - 30 + 1)) + 30;
-        const reasons = [
-          "হেলমেট না থাকায়",
-          "ওভারস্পিডিং এর জন্য",
-          "সিগন্যাল অমান্য করায়",
-          "রং সাইডে ড্রাইভ করায়",
-          "ড্রাইভিং লাইসেন্স না থাকায়"
-        ];
-        const reason = reasons[Math.floor(Math.random() * reasons.length)];
-        player.balance -= fineAmount;
-        newState.governmentBank.balance += fineAmount;
-        description += ` 🚓 ট্রাফিক পুলিশের হাতে ধরা! ${reason} ৳${fineAmount} জরিমানা।`;
-      }
+      const fineAmount = Math.floor(Math.random() * (80 - 30 + 1)) + 30;
+      const reasons = [
+        "হেলমেট না থাকায়",
+        "ওভারস্পিডিং এর জন্য",
+        "সিগন্যাল অমান্য করায়",
+        "রং সাইডে ড্রাইভ করায়",
+        "ড্রাইভিং লাইসেন্স না থাকায়"
+      ];
+      const reason = reasons[Math.floor(Math.random() * reasons.length)];
+      player.balance -= fineAmount;
+      newState.governmentBank.balance += fineAmount;
+      description += ` 🚓 ট্রাফিক পুলিশের হাতে ধরা! ${reason} ৳${toBanglaNum(fineAmount)} জরিমানা।`;
     }
   }
 
@@ -122,23 +112,32 @@ export function executeMovement(
   if (newPosition < oldPosition) {
     if (newPosition === 0) {
       if (newState.marketCrash?.active) {
-        description += ` ➡️ GO তে থেমে ৳0 বোনাস (মার্কেট ক্র্যাশ)!`;
+        description += ` ➡️ GO তে থেমে ৳০ বোনাস (মার্কেট ক্র্যাশ)!`;
       } else {
         let addedMoney = 300;
         let loanDeducted = 0;
         if (player.loan && player.loan.remainingTurns > 0) {
-          loanDeducted = player.loan.deductionPerTurn;
+          if (player.loan.remainingTurns === 1) {
+            loanDeducted = player.loan.remainingAmount;
+          } else {
+            loanDeducted = Math.min(player.loan.deductionPerTurn, player.loan.remainingAmount);
+          }
           player.loan.remainingAmount -= loanDeducted;
           player.loan.remainingTurns -= 1;
+          
+          if (player.loan.remainingTurns > 0 && player.loan.remainingAmount > 0) {
+            player.loan.deductionPerTurn = Math.ceil(player.loan.remainingAmount / player.loan.remainingTurns);
+          }
+
           if (player.loan.remainingTurns <= 0 || player.loan.remainingAmount <= 0) {
             player.loan = undefined;
           }
         }
         player.balance += (addedMoney - loanDeducted);
         newState.governmentBank.balance -= (addedMoney - loanDeducted);
-        description += ` ➡️ GO তে থেমে ৳300 বোনাস!`;
+        description += ` ➡️ GO তে থেমে ৳৩০০ বোনাস!`;
         if (loanDeducted > 0) {
-          description += ` 🏦 (লোন বাবদ ৳${loanDeducted} কাটা হয়েছে)`;
+          description += ` 🏦 (লোন বাবদ ৳${toBanglaNum(loanDeducted)} কাটা হয়েছে)`;
         }
       }
     } else {
@@ -148,9 +147,18 @@ export function executeMovement(
         let addedMoney = 200;
         let loanDeducted = 0;
         if (player.loan && player.loan.remainingTurns > 0) {
-          loanDeducted = player.loan.deductionPerTurn;
+          if (player.loan.remainingTurns === 1) {
+            loanDeducted = player.loan.remainingAmount;
+          } else {
+            loanDeducted = Math.min(player.loan.deductionPerTurn, player.loan.remainingAmount);
+          }
           player.loan.remainingAmount -= loanDeducted;
           player.loan.remainingTurns -= 1;
+
+          if (player.loan.remainingTurns > 0 && player.loan.remainingAmount > 0) {
+            player.loan.deductionPerTurn = Math.ceil(player.loan.remainingAmount / player.loan.remainingTurns);
+          }
+
           if (player.loan.remainingTurns <= 0 || player.loan.remainingAmount <= 0) {
             player.loan = undefined;
           }
@@ -159,7 +167,7 @@ export function executeMovement(
         newState.governmentBank.balance -= (addedMoney - loanDeducted);
         description += generateLog('goCollected', { oldPos: oldPosition, newPos: newPosition });
         if (loanDeducted > 0) {
-          description += ` 🏦 (লোন বাবদ ৳${loanDeducted} কাটা হয়েছে)`;
+          description += ` 🏦 (লোন বাবদ ৳${toBanglaNum(loanDeducted)} কাটা হয়েছে)`;
         }
       }
     }
@@ -205,10 +213,61 @@ export function executeMovement(
     description += ` ➡️ ফ্রি পার্কিং! (পরবর্তী দান বন্ধ)`;
     if (newState.settings.freeParkingCashPool && (newState.freeParkingPool || 0) > 0) {
       player.balance += (newState.freeParkingPool || 0);
-      description += ` (+৳${newState.freeParkingPool})`;
+      description += ` (+৳${toBanglaNum(newState.freeParkingPool || 0)})`;
       newState.freeParkingPool = 0;
     }
     nextAction = 'NONE';
+  }
+
+  // Lottery Tile Logic
+  if (destTile.type === 'LOTTERY') {
+    const LOTTERY_CHARS = ['A', 'E', 'I', 'O', 'U', '0', '1', '2', '3', '4', '5', '6', '7'];
+    const pickChar = () => LOTTERY_CHARS[Math.floor(Math.random() * LOTTERY_CHARS.length)];
+    
+    // Generate player's ticket (5 random characters)
+    const playerTicket = Array.from({ length: 5 }, pickChar).join('');
+    
+    // Determine if this is a win (~4% probability)
+    const isWin = Math.random() < 0.04;
+    
+    let winningCode: string;
+    if (isWin) {
+      // Exact match
+      winningCode = playerTicket;
+    } else {
+      // Near-miss: change 1-2 characters to create excitement
+      const chars = playerTicket.split('');
+      const numChanges = Math.random() < 0.5 ? 1 : 2;
+      const changedPositions = new Set<number>();
+      while (changedPositions.size < numChanges) {
+        changedPositions.add(Math.floor(Math.random() * 5));
+      }
+      for (const pos of changedPositions) {
+        let newChar = pickChar();
+        while (newChar === chars[pos]) {
+          newChar = pickChar();
+        }
+        chars[pos] = newChar;
+      }
+      winningCode = chars.join('');
+    }
+
+    newState.activeLottery = {
+      playerId,
+      playerName: player.name,
+      playerTicket,
+      winningCode,
+      revealedCount: 0,
+      isComplete: false,
+      isWinner: false,
+      hasStarted: false,
+      prizeAmount: 0
+    };
+    
+    description += ` 🎰 লটারি ঘরে এসেছেন! টিকেট কোড: ${playerTicket}`;
+    newState.turnStatus = 'MUST_RESOLVE_LOTTERY';
+    newState.doubleRollCount = 0; // Cancel any double roll for lottery
+    return { newState, description, nextAction: 'NONE' };
   }
 
   // Draw Card Logic (Chance / Chest)

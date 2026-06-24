@@ -21,6 +21,7 @@ COPY server ./server
 
 WORKDIR /app/server
 RUN npm run build
+RUN mkdir -p dist/config/game_data && cp src/config/game_data/*.json dist/config/game_data/
 
 # Production image, copy all compiled files and run express server
 FROM base AS runner

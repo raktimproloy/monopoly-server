@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { toBanglaNum } from './format';
 
 let logTemplates: Record<string, string> | null = null;
 let cardsData: { cards: any[] } | null = null;
@@ -30,7 +31,8 @@ export function generateLog(key: string, params: Record<string, any>): string {
   // Replace all {placeholder} with actual values
   for (const [k, v] of Object.entries(params)) {
     const regex = new RegExp(`{${k}}`, 'g');
-    template = template.replace(regex, String(v));
+    const val = typeof v === 'number' ? toBanglaNum(v) : v;
+    template = template.replace(regex, String(val));
   }
 
   return template;

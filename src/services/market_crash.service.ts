@@ -1,5 +1,6 @@
 import { GameState } from '../types';
 import { generateLog } from '../utils/logGenerator';
+import { toBanglaNum } from '../utils/format';
 
 export class MarketCrashService {
   /**
@@ -95,7 +96,7 @@ export class MarketCrashService {
     newState.marketCrash.nextCrashTime = Date.now() + delayMinutes * 60 * 1000;
     newState.marketCrash.active = false;
     newState.marketCrash.crashEndTime = null;
-    return { newState, log: `মার্কেট ক্র্যাশ শিডিউল করা হয়েছে ${delayMinutes} মিনিট পর।` };
+    return { newState, log: `মার্কেট ক্র্যাশ শিডিউল করা হয়েছে ${toBanglaNum(delayMinutes)} মিনিট পর।` };
   }
 
   /**

@@ -1,5 +1,6 @@
 import { RoomService } from './room.service';
 import { GameState } from '../types';
+import { toBanglaNum } from '../utils/format';
 import { generateLog } from '../utils/logGenerator';
 
 export class PardonService {
@@ -29,7 +30,7 @@ export class PardonService {
     pState.getOutOfJailFreeCards = (pState.getOutOfJailFreeCards || 1) - 1;
     pState.balance += 50;
 
-    const description = `${player.name} একটি পার্ডন কার্ড (Get Out of Jail Free) ব্যাংকের কাছে ৳50-তে বিক্রি করেছেন।`;
+    const description = `${player.name} জেল থেকে মুক্তির কার্ড (Get Out of Jail Free) ব্যাংকের কাছে ৳${toBanglaNum(50)}-এ বিক্রি করেছেন।`;
 
     const savedState = await this.roomService.updateRoomState(
       roomId,

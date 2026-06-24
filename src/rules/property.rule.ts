@@ -1,5 +1,6 @@
 import { GameState, BoardTile, PropertyState } from '../types';
 import { generateLog } from '../utils/logGenerator';
+import { toBanglaNum } from '../utils/format';
 
 /**
  * Validates if a player can buy a specific property.
@@ -17,24 +18,24 @@ export function canBuyProperty(
 
   // 1. Check if player is bankrupt or in jail
   if (player.isBankrupt) {
-    return { valid: false, error: 'Bankrupt players cannot buy properties.' };
+    return { valid: false, error: 'দেউলিয়া প্লেয়ার সম্পত্তি কিনতে পারবে না।' };
   }
 
   // 2. Check if tile is a purchasable property
   const tile = boardTiles[tileIndex];
   if (!tile || !['STREET', 'RAILROAD', 'UTILITY'].includes(tile.type)) {
-    return { valid: false, error: 'Tile is not a purchasable property.' };
+    return { valid: false, error: 'এই ঘরটি কেনার যোগ্য নয়।' };
   }
 
   // 3. Verify location: Standard Monopoly rules say you must land on it
   if (player.position !== tileIndex) {
-    return { valid: false, error: 'Player must stand on the property to buy it.' };
+    return { valid: false, error: 'সম্পত্তিটি কিনতে হলে তার উপর থাকতে হবে।' };
   }
 
   // 4. Verify ownership
   const currentOwner = state.properties[tileIndex]?.ownerId;
   if (currentOwner) {
-    return { valid: false, error: 'Property is already owned.' };
+    return { valid: false, error: 'সম্পত্তিটি ইতোমধ্যে কেনা হয়েছে।' };
   }
 
   // 5. Check balance
@@ -44,7 +45,7 @@ export function canBuyProperty(
   }
 
   if (player.balance < cost) {
-    return { valid: false, error: `Insufficient balance. Property costs ৳${cost}, you have ৳${player.balance}.` };
+    return { valid: false, error: `পর্যাপ্ত ব্যালেন্স নেই। সম্পত্তির দাম ৳${toBanglaNum(cost)}, কিন্তু আপনার আছে ৳${toBanglaNum(player.balance)}।` };
   }
 
   return { valid: true };
@@ -113,7 +114,7 @@ export function canOwnerManageHijackedProperty(
   ) {
     return {
       valid: false,
-      error: 'This property is hijacked by the Don. The owner cannot manage it until the Don power expires.',
+      error: 'এই সম্পত্তিটি বর্তমানে ডন এর দখলে আছে। ডন পাওয়ার শেষ না হওয়া পর্যন্ত মালিক এটি নিয়ন্ত্রণ করতে পারবেন না।',
     };
   }
   return { valid: true };
@@ -126,15 +127,15 @@ export function canMortgageProperty(
 ): { valid: boolean; error?: string } {
   const prop = state.properties[tileIndex];
   if (!prop || prop.ownerId !== playerId) {
-    return { valid: false, error: 'You do not own this property.' };
+    return { valid: false, error: 'আপনি এই সম্পত্তির মালিক নন।' };
   }
 
   if (prop.isMortgaged) {
-    return { valid: false, error: 'Property is already mortgaged.' };
+    return { valid: false, error: 'সম্পত্তিটি ইতোমধ্যে বন্ধক রাখা হয়েছে।' };
   }
 
   if (prop.houses > 0) {
-    return { valid: false, error: 'Must sell all houses before mortgaging property.' };
+    return { valid: false, error: 'বন্ধক রাখার আগে সমস্ত বাড়ি বিক্রি করতে হবে।' };
   }
 
   const hijackCheck = canOwnerManageHijackedProperty(state, playerId, tileIndex);
@@ -182,11 +183,11 @@ export function canUnmortgageProperty(
 ): { valid: boolean; error?: string } {
   const prop = state.properties[tileIndex];
   if (!prop || prop.ownerId !== playerId) {
-    return { valid: false, error: 'You do not own this property.' };
+    return { valid: false, error: 'আপনি এই সম্পত্তির মালিক নন।' };
   }
 
   if (!prop.isMortgaged) {
-    return { valid: false, error: 'Property is not mortgaged.' };
+    return { valid: false, error: 'সম্পত্তিটি বন্ধক রাখা নেই।' };
   }
 
   const tile = boardTiles[tileIndex];
@@ -197,7 +198,7 @@ export function canUnmortgageProperty(
   if (player.balance < costToUnmortgage) {
     return {
       valid: false,
-      error: `Insufficient balance. Unmortgage costs ৳${costToUnmortgage} (mortgage value + 10%), you have ৳${player.balance}.`
+      error: `পর্যাপ্ত ব্যালেন্স নেই। বন্ধক ছাড়াতে খরচ হবে ৳${toBanglaNum(costToUnmortgage)} (বন্ধক মূল্য + ১০%), কিন্তু আপনার আছে ৳${toBanglaNum(player.balance)}।`
     };
   }
 
@@ -333,7 +334,7 @@ export function applyRentDebtCollection(
   creditor.balance += pay;
   activeDebt.remainingAmount -= pay;
 
-  let extraDescription = ` ${debtor.name} ${creditor.name}-কে আরও ৳${pay} ভাড়া দিয়েছেন।`;
+  let extraDescription = ` ${debtor.name} ${creditor.name}-কে আরও ৳${toBanglaNum(pay)} ভাড়া দিয়েছেন।`;
 
   if (activeDebt.remainingAmount <= 0) {
     newState.pendingRentOwed = null;
@@ -385,7 +386,7 @@ export function payRent(
       fullRentAmount: rentAmount,
     };
     newState.turnStatus = 'BANKRUPTCY_PENDING';
-    description += ` (মোট ভাড়া ৳${rentAmount}, পকেটে ছিল ৳${actualPaid}। বাকি ৳${remaining} — বিক্রি/বন্ধক করলে ${owner.name} পাবেন।)`;
+    description += ` (মোট ভাড়া ৳${toBanglaNum(rentAmount)}, পকেটে ছিল ৳${toBanglaNum(actualPaid)}। বাকি ৳${toBanglaNum(remaining)} — বিক্রি/বন্ধক করলে ${owner.name} পাবেন।)`;
   } else {
     newState.pendingRentOwed = null;
     newState.turnStatus = 'MUST_ACT_OR_END';

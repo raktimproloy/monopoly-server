@@ -1,6 +1,7 @@
 import { GameState, TradeOfferPayload } from '../types';
 import { generateLog } from '../utils/logGenerator';
 import { canOwnerManageHijackedProperty } from './property.rule';
+import { toBanglaNum } from '../utils/format';
 
 /**
  * Validates a trade proposal.
@@ -13,28 +14,28 @@ export function canOfferTrade(
   const receiver = state.players[offer.receiverId];
 
   if (!sender || sender.isBankrupt) {
-    return { valid: false, error: 'Sender player is not active.' };
+    return { valid: false, error: 'প্রস্তাবকারী খেলোয়াড় সক্রিয় নেই।' };
   }
   if (!receiver || receiver.isBankrupt) {
-    return { valid: false, error: 'Receiver player is not active.' };
+    return { valid: false, error: 'যার কাছে প্রস্তাব পাঠাচ্ছেন সে সক্রিয় নেই।' };
   }
 
   // 1. Verify Cash balances
   if (sender.balance < offer.offerCash) {
-    return { valid: false, error: `${sender.name} does not have ৳${offer.offerCash} to trade.` };
+    return { valid: false, error: `${sender.name}-এর কাছে ৳${toBanglaNum(offer.offerCash)} নেই।` };
   }
   if (receiver.balance < offer.requestCash) {
-    return { valid: false, error: `${receiver.name} does not have ৳${offer.requestCash} to trade.` };
+    return { valid: false, error: `${receiver.name}-এর কাছে ৳${toBanglaNum(offer.requestCash)} নেই।` };
   }
 
   // 2. Verify Sender properties
   for (const idx of offer.offerPropertyIndexes) {
     const prop = state.properties[idx];
     if (!prop || prop.ownerId !== offer.senderId) {
-      return { valid: false, error: `Sender does not own property at index ${idx}.` };
+      return { valid: false, error: `প্রস্তাবকারী এই সম্পত্তির মালিক নন।` };
     }
     if (prop.houses > 0) {
-      return { valid: false, error: `Cannot trade property at index ${idx} because it still has houses built on it.` };
+      return { valid: false, error: `বাড়ি নির্মাণ করা অবস্থায় সম্পত্তি ট্রেড করা যাবে না।` };
     }
     const hijackCheck = canOwnerManageHijackedProperty(state, offer.senderId, idx);
     if (!hijackCheck.valid) return hijackCheck;
@@ -44,10 +45,10 @@ export function canOfferTrade(
   for (const idx of offer.requestPropertyIndexes) {
     const prop = state.properties[idx];
     if (!prop || prop.ownerId !== offer.receiverId) {
-      return { valid: false, error: `Receiver does not own property at index ${idx}.` };
+      return { valid: false, error: `যার কাছে প্রস্তাব পাঠাচ্ছেন সে এই সম্পত্তির মালিক নন।` };
     }
     if (prop.houses > 0) {
-      return { valid: false, error: `Cannot trade property at index ${idx} because it still has houses built on it.` };
+      return { valid: false, error: `বাড়ি নির্মাণ করা অবস্থায় সম্পত্তি ট্রেড করা যাবে না।` };
     }
     const hijackCheck = canOwnerManageHijackedProperty(state, offer.receiverId, idx);
     if (!hijackCheck.valid) return hijackCheck;
