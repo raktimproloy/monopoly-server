@@ -5,5 +5,4 @@ dist
 *.md
 .env*.local
 bun.lock
-package-lock.json
 Dockerfile
