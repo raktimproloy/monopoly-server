@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  server:
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
+    ports:
+      - "127.0.0.1:6001:6001"
+    environment:
+      - PORT=6001
+      - CLIENT_ORIGIN=${CLIENT_ORIGIN:-https://bdpoly.aftonix.com}
+      - DATABASE_URL=${DATABASE_URL}
+      - DIRECT_URL=${DIRECT_URL}
+    restart: always
