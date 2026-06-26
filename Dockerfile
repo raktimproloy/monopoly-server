@@ -7,25 +7,23 @@ RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
 # Copy package files for dependency installation
-COPY server/package*.json ./server/
-COPY server/package-lock.json ./server/
+COPY package*.json ./
+COPY package-lock.json ./
 
-WORKDIR /app/server
 RUN npm ci
 
 # Rebuild the source code only when needed
 FROM base AS builder
 WORKDIR /app
-COPY --from=deps /app/server/node_modules ./server/node_modules
-COPY server ./server
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
 
-WORKDIR /app/server
 RUN npm run build
 RUN mkdir -p dist/config/game_data && cp src/config/game_data/*.json dist/config/game_data/
 
 # Production image, copy all compiled files and run express server
 FROM base AS runner
-WORKDIR /app/server
+WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=6001
@@ -33,10 +31,10 @@ ENV PORT=6001
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nodejs
 
-COPY --from=builder /app/server/package.json ./
-COPY --from=builder /app/server/node_modules ./node_modules
-COPY --from=builder /app/server/dist ./dist
-COPY --from=builder /app/server/schema.sql ./
+COPY --from=builder /app/package.json ./
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/schema.sql ./
 
 USER nodejs
 
