@@ -101,5 +101,14 @@ export function executeTrade(
     receiverName: receiver.name
   });
 
-  return { newState, description };
+  let cashNote = '';
+  if (offer.offerCash > 0 && offer.requestCash > 0) {
+    cashNote = ` (${sender.name} ${receiver.name}-কে ৳${toBanglaNum(offer.offerCash)} দিয়েছেন, ${receiver.name} ${sender.name}-কে ৳${toBanglaNum(offer.requestCash)} দিয়েছেন)`;
+  } else if (offer.offerCash > 0) {
+    cashNote = ` (${sender.name} ${receiver.name}-কে ৳${toBanglaNum(offer.offerCash)} দিয়েছেন)`;
+  } else if (offer.requestCash > 0) {
+    cashNote = ` (${receiver.name} ${sender.name}-কে ৳${toBanglaNum(offer.requestCash)} দিয়েছেন)`;
+  }
+
+  return { newState, description: description + cashNote };
 }

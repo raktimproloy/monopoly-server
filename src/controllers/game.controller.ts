@@ -23,6 +23,9 @@ const activeTrades: Record<string, TradeOfferPayload> = {};
 // Maps socket.id → roomId for fast lookup on disconnect
 const socketRoomMap: Record<string, string> = {};
 
+// Per-room player ping (ms RTT) reported by each client
+const roomPlayerPings: Record<string, Record<string, number>> = {};
+
 // Tracks last activity timestamp per room for inactivity TTL
 const roomActivity: Record<string, number> = {};
 
@@ -128,6 +131,18 @@ export class GameController {
   public registerConnection(socket: Socket) {
     const userId = socket.data?.userId as string;
     logger.info(`User socket connected: ${socket.id} (userId: ${userId})`);
+
+    // --- Ping / latency ---
+    socket.on('ping_check', (_sentAt: number, callback?: () => void) => {
+      if (typeof callback === 'function') callback();
+    });
+
+    socket.on('report_ping', ({ roomId, playerId, ping }: { roomId: string; playerId: string; ping: number }) => {
+      if (!roomId || !playerId || typeof ping !== 'number') return;
+      if (!roomPlayerPings[roomId]) roomPlayerPings[roomId] = {};
+      roomPlayerPings[roomId][playerId] = Math.round(ping);
+      this.io.to(roomId).emit('player_pings_updated', roomPlayerPings[roomId]);
+    });
 
     // --- 1. Join Room Event ---
     socket.on('join_room', async ({ roomId, name, avatar }: { roomId: string; name: string; avatar: string }) => {
@@ -1053,6 +1068,11 @@ export class GameController {
     // --- 9. Disconnect Event ---
     socket.on('disconnect', () => {
       logger.info(`User socket disconnected: ${socket.id} (userId: ${userId})`);
+      const roomId = this.getSocketRoom(socket);
+      if (roomId && userId && roomPlayerPings[roomId]) {
+        delete roomPlayerPings[roomId][userId];
+        this.io.to(roomId).emit('player_pings_updated', roomPlayerPings[roomId]);
+      }
     });
   }
 

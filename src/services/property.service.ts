@@ -10,6 +10,15 @@ export class PropertyService {
     this.roomService = roomService;
   }
 
+  private assertPlayerTurn(state: GameState, playerId: string): void {
+    if (state.gameStatus !== 'ACTIVE') {
+      throw new Error('গেম এখন সক্রিয় নয়।');
+    }
+    if (state.currentTurnPlayerId !== playerId) {
+      throw new Error('এটি আপনার টার্ন নয়। শুধু নিজের টার্নে এই কাজ করতে পারবেন।');
+    }
+  }
+
   /**
    * Purchases the tile the player is currently standing on.
    */
@@ -75,6 +84,7 @@ export class PropertyService {
   async mortgageProperty(roomId: string, playerId: string, tileIndex: number): Promise<{ state: GameState; log: string }> {
     const state = await this.roomService.getRoomState(roomId);
     if (!state) throw new Error(`Game room ${roomId} not found.`);
+    this.assertPlayerTurn(state, playerId);
     if (state.settings.jailLoss && state.players[playerId]?.inJail) {
       throw new Error('Jail Loss: You cannot perform this action while in jail.');
     }
@@ -109,6 +119,7 @@ export class PropertyService {
   async unmortgageProperty(roomId: string, playerId: string, tileIndex: number): Promise<{ state: GameState; log: string }> {
     const state = await this.roomService.getRoomState(roomId);
     if (!state) throw new Error(`Game room ${roomId} not found.`);
+    this.assertPlayerTurn(state, playerId);
     if (state.settings.jailLoss && state.players[playerId]?.inJail) {
       throw new Error('Jail Loss: You cannot perform this action while in jail.');
     }
@@ -140,6 +151,7 @@ export class PropertyService {
   async buildHouse(roomId: string, playerId: string, tileIndex: number): Promise<{ state: GameState; log: string }> {
     const state = await this.roomService.getRoomState(roomId);
     if (!state) throw new Error(`Game room ${roomId} not found.`);
+    this.assertPlayerTurn(state, playerId);
     if (state.settings.jailLoss && state.players[playerId]?.inJail) {
       throw new Error('Jail Loss: You cannot perform this action while in jail.');
     }
@@ -198,6 +210,7 @@ export class PropertyService {
   async sellHouse(roomId: string, playerId: string, tileIndex: number): Promise<{ state: GameState; log: string }> {
     const state = await this.roomService.getRoomState(roomId);
     if (!state) throw new Error(`Game room ${roomId} not found.`);
+    this.assertPlayerTurn(state, playerId);
     if (state.settings.jailLoss && state.players[playerId]?.inJail) {
       throw new Error('Jail Loss: You cannot perform this action while in jail.');
     }
@@ -255,6 +268,7 @@ export class PropertyService {
   async sellProperty(roomId: string, playerId: string, tileIndex: number): Promise<{ state: GameState; log: string }> {
     const state = await this.roomService.getRoomState(roomId);
     if (!state) throw new Error(`Game room ${roomId} not found.`);
+    this.assertPlayerTurn(state, playerId);
     if (state.settings.jailLoss && state.players[playerId]?.inJail) {
       throw new Error('Jail Loss: You cannot perform this action while in jail.');
     }
@@ -309,7 +323,7 @@ export class PropertyService {
   async auctionProperty(roomId: string, playerId: string, tileIndex: number): Promise<{ state: GameState; log: string }> {
     const state = await this.roomService.getRoomState(roomId);
     if (!state) throw new Error(`Game room ${roomId} not found.`);
-    if (state.currentTurnPlayerId !== playerId) throw new Error('You can only perform this action during your turn.');
+    this.assertPlayerTurn(state, playerId);
 
     const { tiles } = await this.roomService.loadBoardTemplate();
     const newState = JSON.parse(JSON.stringify(state)) as GameState & { activeAuction?: any, previousGameStatus?: string };

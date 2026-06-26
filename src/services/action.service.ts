@@ -548,6 +548,7 @@ export class ActionService {
       case 'ADD_MONEY':
         player.balance += (card.value || 0);
         newState.governmentBank.balance -= (card.value || 0);
+        description += ` (+৳${toBanglaNum(card.value || 0)} পেয়েছেন)`;
         break;
       case 'DEDUCT_MONEY':
         player.balance -= (card.value || 0);
@@ -555,6 +556,7 @@ export class ActionService {
         if (newState.settings.freeParkingCashPool) {
           newState.freeParkingPool = (newState.freeParkingPool || 0) + (card.value || 0);
         }
+        description += ` (-৳${toBanglaNum(card.value || 0)} দিয়েছেন)`;
         break;
       case 'GO_TO_JAIL':
         player.inJail = true;
