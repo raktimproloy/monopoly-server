@@ -1,18 +1,21 @@
 import { db } from '../config/database';
+import { runtimeFlags } from '../config/runtime';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { toBanglaNum } from '../utils/format';
 import { GameState, Player, BoardTile, GameSettings } from '../types';
 import { logger } from '../utils/logger';
-import { MarketCrashService } from './market_crash.service';
+import { WorldEventOrchestrator } from './world_event.orchestrator';
+import { roomManager } from '../managers/RoomManager';
+import { gameStateStore } from '../state/GameStateStore';
+import { postgresPersistence } from '../persistence/PostgresPersistence';
 
-// In-memory fallback database for out-of-the-box local testing if PG connection is unavailable
+// Legacy exports used by admin clear-db endpoint
 export const memoryRooms: Record<string, { state: GameState; version: number; templateId: number }> = {};
 export const memoryLogs: any[] = [];
-export let stateFlags = {
-  useMemoryFallback: false
-};
+/** @deprecated Use runtimeFlags — kept for backward compatibility */
+export const stateFlags = runtimeFlags;
 
 // Standard board tiles fallback if database query fails
 // export const STANDARD_TILES_FALLBACK: BoardTile[] = [
@@ -77,7 +80,7 @@ export const STANDARD_TILES_FALLBACK: BoardTile[] = [
   { index: 14, name: "খুলনা (খুলনা)", type: "STREET", price: 160, rent: [12, 60, 180, 500, 700, 900], mortgageValue: 80, houseCost: 100, group: "Pink" },
   { index: 15, name: "রাজশাহী রেল", type: "RAILROAD", price: 200, rent: [25, 50, 100, 200], mortgageValue: 100 },
   { index: 16, name: "বগুড়া (রাজশাহী)", type: "STREET", price: 180, rent: [14, 70, 200, 550, 750, 950], mortgageValue: 90, houseCost: 100, group: "Orange" },
-  { index: 17, name: "গুপ্তধন", type: "CHEST" },
+  { index: 17, name: "ভাগ্য পরীক্ষা", type: "CHANCE" },
   { index: 18, name: "নাটোর (রাজশাহী)", type: "STREET", price: 180, rent: [14, 70, 200, 550, 750, 950], mortgageValue: 90, houseCost: 100, group: "Orange" },
   { index: 19, name: "রাজশাহী (রাজশাহী)", type: "STREET", price: 200, rent: [16, 80, 220, 600, 800, 1000], mortgageValue: 100, houseCost: 100, group: "Orange" },
   { index: 20, name: "অবসর", type: "FREE_PARKING" },
@@ -154,7 +157,7 @@ export class RoomService {
       allowUnpurchasedAuction: false,
       allowMortgage: false,
       jailLoss: false,
-      enableTrafficPolice: false
+      enableTrafficPolice: true
     };
 
     initialPlayers.forEach((p) => {
@@ -194,36 +197,27 @@ export class RoomService {
       },
       governmentBank: {
         balance: Math.floor(Math.random() * (1500000 - 700000 + 1)) + 700000
-      }
+      },
+      pendingTrades: []
     };
 
-    if (stateFlags.useMemoryFallback) {
-      memoryRooms[roomId] = {
-        state: initialState,
-        version: 1,
-        templateId
-      };
-      logger.info(`Room ${roomId} created in-memory fallback successfully`);
-      return initialState;
-    }
+    await roomManager.createRoom(roomId, initialState, templateId);
+    logger.info(`Room ${roomId} created in Redis active store (v1)`);
 
-    try {
-      await db.query(
-        'INSERT INTO game_rooms (room_id, board_template_id, state, version) VALUES ($1, $2, $3, 1) ON CONFLICT (room_id) DO UPDATE SET board_template_id = EXCLUDED.board_template_id, state = EXCLUDED.state, version = game_rooms.version + 1',
-        [roomId, templateId, JSON.stringify(initialState)]
-      );
-      logger.info(`Room ${roomId} initialized in database successfully`);
-      return initialState;
-    } catch (err) {
-      logger.warn('Database insert failed. Creating room in-memory instead.', err);
-      stateFlags.useMemoryFallback = true;
-      memoryRooms[roomId] = {
-        state: initialState,
-        version: 1,
-        templateId
-      };
-      return initialState;
-    }
+    void postgresPersistence.ensureRoomRecord(roomId, initialState, templateId);
+
+    roomManager.emit('stateUpdated', {
+      roomId,
+      previousState: initialState,
+      state: initialState,
+      version: 1,
+      log: 'Room created',
+      playerId: playerOrder[0] || 'system',
+      actionType: 'CREATE_ROOM',
+      actionPayload: {},
+    });
+
+    return initialState;
   }
 
   /**
@@ -286,7 +280,7 @@ export class RoomService {
       player.id,
       'JOIN_LOBBY',
       { name: player.name, avatar: player.avatar },
-      `{player.name} লবিতে যুক্ত হয়েছেন।`
+      `${player.name} লবিতে যুক্ত হয়েছেন।`
     );
 
     return resultState;
@@ -360,13 +354,14 @@ export class RoomService {
     newState.currentTurnPlayerId = newState.playerOrder[0];
     newState.gameStatus = 'ACTIVE';
     newState.turnStatus = 'MUST_ROLL';
+    newState.pendingTrades = [];
 
-    // Initialize first market crash timer
-    const { newState: stateWithCrash } = MarketCrashService.scheduleNextCrash(newState);
+    // Initialize unified world event scheduler (market crash + traffic police)
+    const { newState: stateWithEvents } = WorldEventOrchestrator.initOnGameStart(newState);
 
     const resultState = await this.updateRoomState(
       roomId,
-      stateWithCrash,
+      stateWithEvents,
       playerId,
       'START_GAME',
       {},
@@ -444,22 +439,16 @@ export class RoomService {
     newState.pendingRentOwed = null;
     newState.activeDonPower = null;
     newState.donCardDrawn = false;
-    newState.marketCrash = {
-      active: false,
-      nextCrashTime: null,
-      crashEndTime: null,
-      crashCount: 0
-    };
-
-    const { newState: stateWithCrash } = MarketCrashService.scheduleNextCrash(newState);
+    newState.pendingTrades = [];
+    const { newState: stateWithEvents } = WorldEventOrchestrator.initOnGameStart(newState);
 
     const resultState = await this.updateRoomState(
       roomId,
-      stateWithCrash,
+      stateWithEvents,
       playerId,
       'RESTART_GAME',
       {},
-      `নতুন গেম শুরু! ${stateWithCrash.players[stateWithCrash.currentTurnPlayerId].name}-এর চাল দিয়ে শুরু হলো।`
+      `নতুন গেম শুরু! ${stateWithEvents.players[stateWithEvents.currentTurnPlayerId].name}-এর চাল দিয়ে শুরু হলো।`
     );
 
     return resultState;
@@ -469,22 +458,32 @@ export class RoomService {
    * Loads active game state.
    */
   async getRoomState(roomId: string): Promise<GameState | null> {
-    if (stateFlags.useMemoryFallback) {
+    const hot = await gameStateStore.getState(roomId);
+    if (hot) return hot;
+
+    if (runtimeFlags.useMemoryFallback) {
       return memoryRooms[roomId]?.state || null;
     }
+
     try {
-      const rows = await db.query('SELECT state FROM game_rooms WHERE room_id = $1 LIMIT 1', [roomId]);
+      const rows = await db.query<{ state: GameState; board_template_id: number }>(
+        'SELECT state, board_template_id FROM game_rooms WHERE room_id = $1 LIMIT 1',
+        [roomId]
+      );
       if (rows.length === 0) return null;
-      return rows[0].state as GameState;
+      const state = rows[0].state;
+      await gameStateStore.create(roomId, state, rows[0].board_template_id || 1);
+      return state;
     } catch (err) {
-      logger.warn('Database read failed. Reading from in-memory fallback.', err);
-      stateFlags.useMemoryFallback = true;
+      logger.warn('Database read failed. Using memory fallback.', err);
+      runtimeFlags.useMemoryFallback = true;
       return memoryRooms[roomId]?.state || null;
     }
   }
 
   /**
-   * Saves updated game state and audit log in a safe transaction (with optimistic locking).
+   * Saves updated game state to Redis (hot path) and queues cold-path PG audit log.
+   * Broadcast is triggered automatically via RoomManager → RoomBroadcaster.
    */
   async updateRoomState(
     roomId: string,
@@ -494,67 +493,34 @@ export class RoomService {
     actionPayload: any,
     logMessage: string
   ): Promise<GameState> {
-    logger.game(roomId, actionType, playerId, logMessage);
+    const event = await roomManager.commitUpdate(roomId, newState, {
+      playerId,
+      actionType,
+      actionPayload,
+      log: logMessage,
+    });
 
-    // Normalize Turn Status for Negative Balances
-    const currentTurnPlayer = newState.players[newState.currentTurnPlayerId];
-    if (currentTurnPlayer) {
-      const owesRent =
-        newState.pendingRentOwed?.debtorId === newState.currentTurnPlayerId &&
-        (newState.pendingRentOwed?.remainingAmount ?? 0) > 0;
+    const record = await gameStateStore.get(roomId);
+    if (record) {
+      void postgresPersistence.ensureRoomRecord(roomId, event.state, record.templateId);
+    }
 
-      if (newState.turnStatus === 'BANKRUPTCY_PENDING' && currentTurnPlayer.balance >= 0 && !owesRent) {
-        newState.turnStatus = 'MUST_ACT_OR_END';
-      } else if (newState.turnStatus === 'MUST_ACT_OR_END' && (currentTurnPlayer.balance < 0 || owesRent)) {
-        newState.turnStatus = 'BANKRUPTCY_PENDING';
+    postgresPersistence.queueLog({
+      room_id: roomId,
+      player_id: playerId,
+      action_type: actionType,
+      action_payload: actionPayload,
+      state_snapshot: event.state,
+    });
+
+    if (event.state.gameStatus === 'FINISHED') {
+      const record = await gameStateStore.get(roomId);
+      if (record) {
+        void postgresPersistence.persistFinalRoomState(roomId, event.state, record.templateId);
       }
     }
 
-    if (stateFlags.useMemoryFallback) {
-      const room = memoryRooms[roomId];
-      if (!room) throw new Error(`Room ${roomId} does not exist in memory cache.`);
-      room.state = newState;
-      room.version += 1;
-
-      memoryLogs.push({
-        room_id: roomId,
-        player_id: playerId,
-        action_type: actionType,
-        action_payload: actionPayload,
-        state_snapshot: newState,
-        created_at: new Date()
-      });
-      return newState;
-    }
-
-    try {
-      await db.transaction(async (client) => {
-        const versionRes = await client.query('SELECT version FROM game_rooms WHERE room_id = $1 FOR UPDATE', [roomId]);
-        if (versionRes.rows.length === 0) {
-          throw new Error(`Room ${roomId} not found during update.`);
-        }
-        const currentVersion = versionRes.rows[0].version;
-
-        const updateRes = await client.query(
-          'UPDATE game_rooms SET state = $1, version = version + 1 WHERE room_id = $2 AND version = $3 RETURNING version',
-          [JSON.stringify(newState), roomId, currentVersion]
-        );
-
-        if (updateRes.rows.length === 0) {
-          throw new Error(`Concurrency check failed for Room ${roomId}. State has been updated by another process.`);
-        }
-
-        await client.query(
-          'INSERT INTO game_logs (room_id, player_id, action_type, action_payload, state_snapshot) VALUES ($1, $2, $3, $4, $5)',
-          [roomId, playerId, actionType, JSON.stringify(actionPayload), JSON.stringify(newState)]
-        );
-      });
-
-      return newState;
-    } catch (error) {
-      logger.error(`Failed to update state for room ${roomId}. Error:`, error);
-      throw error;
-    }
+    return event.state;
   }
 
   /**
@@ -655,16 +621,12 @@ export class RoomService {
   async deleteRoom(roomId: string): Promise<void> {
     logger.info(`Deleting room ${roomId} — no players remaining.`);
 
-    if (stateFlags.useMemoryFallback) {
-      delete memoryRooms[roomId];
-      return;
-    }
+    const record = await gameStateStore.delete(roomId);
+    delete memoryRooms[roomId];
 
-    try {
-      await db.query('DELETE FROM game_rooms WHERE room_id = $1', [roomId]);
-    } catch (err) {
-      logger.warn(`Failed to delete room ${roomId} from database. Removing from memory.`, err);
-      delete memoryRooms[roomId];
+    if (record) {
+      void postgresPersistence.persistFinalRoomState(roomId, record.state, record.templateId);
     }
+    void postgresPersistence.deleteRoomRecord(roomId);
   }
 }

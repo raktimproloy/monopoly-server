@@ -6,6 +6,10 @@ import { logger } from './utils/logger';
 import { pool } from './config/database';
 import { GameController } from './controllers/game.controller';
 import { socketConnectionGuard } from './middleware/socketValidation';
+import { roomManager } from './managers/RoomManager';
+import { RoomBroadcaster } from './broadcast/RoomBroadcaster';
+import { postgresPersistence } from './persistence/PostgresPersistence';
+import { shutdownRedis, getRedisClient } from './redis/client';
 import cors from 'cors';
 
 dotenv.config();
@@ -16,7 +20,6 @@ app.use(cors({
 }));
 const httpServer = createServer(app);
 
-// Initialize Socket.io with CORS parameters
 const io = new Server(httpServer, {
   cors: {
     origin: process.env.CLIENT_ORIGIN || '*',
@@ -25,10 +28,17 @@ const io = new Server(httpServer, {
   }
 });
 
-// Register connection-level validation middleware (Anti-Cheat / Authentication layer)
 io.use(socketConnectionGuard);
 
-const gameController = new GameController(io);
+/** Real-time fan-out: RoomManager commits → RoomBroadcaster emits deltas. */
+const roomBroadcaster = new RoomBroadcaster(io);
+roomManager.on('stateUpdated', (event) => {
+  void roomBroadcaster.broadcast(event);
+});
+
+const gameController = new GameController(io, roomBroadcaster);
+
+void getRedisClient();
 
 // Orchestrate socket connections
 io.on('connection', (socket) => {
@@ -44,9 +54,10 @@ app.get('/health', (req, res) => {
 app.post('/api/clear-db', async (req, res) => {
   try {
     const { memoryRooms, memoryLogs } = await import('./services/room.service');
-    // Clear memory states
-    for (const key of Object.keys(memoryRooms)) {
-      delete memoryRooms[key];
+    const { gameStateStore } = await import('./state/GameStateStore');
+    const roomIds = await gameStateStore.listActiveRoomIds();
+    for (const id of roomIds) {
+      await gameStateStore.delete(id);
     }
     memoryLogs.length = 0;
 
@@ -77,6 +88,8 @@ httpServer.listen(PORT, () => {
 // Graceful teardown listeners
 const gracefulShutdown = () => {
   logger.info('Shutting down server. Closing database client pool...');
+  postgresPersistence.shutdown();
+  void shutdownRedis();
   pool.end(() => {
     logger.info('Database pool closed. Exiting process.');
     process.exit(0);

@@ -28,6 +28,15 @@ export function canOfferTrade(
     return { valid: false, error: `${receiver.name}-এর কাছে ৳${toBanglaNum(offer.requestCash)} নেই।` };
   }
 
+  const offerPardon = offer.offerPardonCards || 0;
+  const requestPardon = offer.requestPardonCards || 0;
+  if (offerPardon > (sender.getOutOfJailFreeCards || 0)) {
+    return { valid: false, error: `${sender.name}-এর কাছে পর্যাপ্ত পার্ডন কার্ড নেই।` };
+  }
+  if (requestPardon > (receiver.getOutOfJailFreeCards || 0)) {
+    return { valid: false, error: `${receiver.name}-এর কাছে পর্যাপ্ত পার্ডন কার্ড নেই।` };
+  }
+
   // 2. Verify Sender properties
   for (const idx of offer.offerPropertyIndexes) {
     const prop = state.properties[idx];
@@ -86,6 +95,17 @@ export function executeTrade(
     if (prop) {
       prop.ownerId = offer.senderId;
     }
+  }
+
+  const offerPardon = offer.offerPardonCards || 0;
+  const requestPardon = offer.requestPardonCards || 0;
+  if (offerPardon > 0) {
+    sender.getOutOfJailFreeCards = (sender.getOutOfJailFreeCards || 0) - offerPardon;
+    receiver.getOutOfJailFreeCards = (receiver.getOutOfJailFreeCards || 0) + offerPardon;
+  }
+  if (requestPardon > 0) {
+    receiver.getOutOfJailFreeCards = (receiver.getOutOfJailFreeCards || 0) - requestPardon;
+    sender.getOutOfJailFreeCards = (sender.getOutOfJailFreeCards || 0) + requestPardon;
   }
 
   // Check if this trade resolved a bankruptcy pending status

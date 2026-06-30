@@ -3,8 +3,7 @@ import { PropertyService } from './property.service';
 import { TradeService } from './trade.service';
 import { ActionService } from './action.service';
 import { PardonService } from './pardon.service';
-import { MarketCrashService } from './market_crash.service';
-import { TrafficPoliceService } from './traffic_police.service';
+import { WorldEventOrchestrator } from './world_event.orchestrator';
 import { BankService } from './bank.service';
 import { GameState, TradeOfferPayload, BoardTile } from '../types';
 
@@ -187,7 +186,30 @@ export class GameService {
   }
 
   /**
-   * Delegates trade execution to TradeService.
+   * Proposes a new trade offer (optionally replacing an existing negotiation).
+   */
+  async proposeTrade(
+    roomId: string,
+    offer: TradeOfferPayload,
+    replacesTradeId?: string
+  ): Promise<{ state: GameState; log: string; tradeId: string; expiresAt?: number }> {
+    return this.tradeService.proposeTrade(roomId, offer, replacesTradeId);
+  }
+
+  async cancelTrade(roomId: string, tradeId: string, playerId: string): Promise<{ state: GameState; log: string }> {
+    return this.tradeService.cancelTrade(roomId, tradeId, playerId);
+  }
+
+  async acceptTrade(roomId: string, tradeId: string, playerId: string): Promise<{ state: GameState; log: string }> {
+    return this.tradeService.acceptTrade(roomId, tradeId, playerId);
+  }
+
+  async expireTrade(roomId: string, tradeId: string): Promise<{ state: GameState; log: string } | null> {
+    return this.tradeService.expireTrade(roomId, tradeId);
+  }
+
+  /**
+   * @deprecated Use acceptTrade
    */
   async executeTrade(roomId: string, offer: TradeOfferPayload): Promise<{ state: GameState; log: string }> {
     return this.tradeService.executeTrade(roomId, offer);
@@ -276,7 +298,7 @@ export class GameService {
   async devForceCrash(roomId: string, playerId: string): Promise<{ state: GameState; log: string }> {
     const state = await this.roomService.getRoomState(roomId);
     if (!state) throw new Error('Room not found');
-    const { newState, log } = MarketCrashService.forceCrash(state);
+    const { newState, log } = WorldEventOrchestrator.devForceCrash(state);
     return {
       state: await this.roomService.updateRoomState(roomId, newState, playerId, 'DEV_FORCE_CRASH', {}, log),
       log
@@ -289,7 +311,7 @@ export class GameService {
   async devSetNextCrash(roomId: string, playerId: string, delayMinutes: number): Promise<{ state: GameState; log: string }> {
     const state = await this.roomService.getRoomState(roomId);
     if (!state) throw new Error('Room not found');
-    const { newState, log } = MarketCrashService.devSetNextCrash(state, delayMinutes);
+    const { newState, log } = WorldEventOrchestrator.devSetNextCrash(state, delayMinutes);
     return {
       state: await this.roomService.updateRoomState(roomId, newState, playerId, 'DEV_SET_NEXT_CRASH', { delayMinutes }, log),
       log
@@ -303,7 +325,7 @@ export class GameService {
     const state = await this.roomService.getRoomState(roomId);
     if (!state) throw new Error('Room not found');
     const { tiles } = await this.loadBoardTemplate();
-    const { newState, log } = TrafficPoliceService.devForcePolice(state, tiles);
+    const { newState, log } = WorldEventOrchestrator.devForcePolice(state, tiles);
     return {
       state: await this.roomService.updateRoomState(roomId, newState, playerId, 'DEV_FORCE_POLICE', {}, log),
       log
@@ -316,7 +338,7 @@ export class GameService {
   async devSetNextPolice(roomId: string, playerId: string, delayMinutes: number): Promise<{ state: GameState; log: string }> {
     const state = await this.roomService.getRoomState(roomId);
     if (!state) throw new Error('Room not found');
-    const { newState, log } = TrafficPoliceService.devSetNextPolice(state, delayMinutes);
+    const { newState, log } = WorldEventOrchestrator.devSetNextPolice(state, delayMinutes);
     return {
       state: await this.roomService.updateRoomState(roomId, newState, playerId, 'DEV_SET_NEXT_POLICE', { delayMinutes }, log),
       log
@@ -324,35 +346,19 @@ export class GameService {
   }
 
   /**
-   * Processes market crash and traffic police timers and transitions. Returns updated state if changed.
+   * Processes world event timers (market crash, traffic police) via unified orchestrator.
    */
   async processGameTimers(roomId: string): Promise<{ state: GameState; log: string } | null> {
     const state = await this.roomService.getRoomState(roomId);
     if (!state || state.gameStatus !== 'ACTIVE') return null;
 
-    let currentState = state;
-    let anyChanged = false;
-    let combinedLog = '';
-
-    const { newState: crashState, log: crashLog, changed: crashChanged } = MarketCrashService.processTimers(currentState);
-    if (crashChanged) {
-      currentState = crashState;
-      anyChanged = true;
-      combinedLog += crashLog + ' ';
-    }
-
     const { tiles } = await this.loadBoardTemplate();
-    const { newState: policeState, log: policeLog, changed: policeChanged } = TrafficPoliceService.processTimers(currentState, tiles);
-    if (policeChanged) {
-      currentState = policeState;
-      anyChanged = true;
-      combinedLog += policeLog + ' ';
-    }
+    const { newState, log, changed } = WorldEventOrchestrator.processTick(state, tiles);
 
-    if (anyChanged) {
+    if (changed) {
       return {
-        state: await this.roomService.updateRoomState(roomId, currentState, 'SYSTEM', 'TIMER_UPDATE', {}, combinedLog.trim()),
-        log: combinedLog.trim()
+        state: await this.roomService.updateRoomState(roomId, newState, 'SYSTEM', 'TIMER_UPDATE', {}, log.trim()),
+        log: log.trim()
       };
     }
     return null;

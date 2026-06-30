@@ -38,7 +38,7 @@ export function generateLog(key: string, params: Record<string, any>): string {
   return template;
 }
 
-export function drawCard() {
+export function drawCard(options?: { moneyOnly?: boolean }) {
   if (!cardsData) {
     try {
       const filePath = path.join(__dirname, '../config/game_data/cards.json');
@@ -50,7 +50,10 @@ export function drawCard() {
     }
   }
 
-  const deck = cardsData!.cards;
+  let deck = cardsData!.cards;
+  if (options?.moneyOnly) {
+    deck = deck.filter((c) => c.action === 'ADD_MONEY');
+  }
   if (!deck || deck.length === 0) return null;
 
   const randomIndex = Math.floor(Math.random() * deck.length);

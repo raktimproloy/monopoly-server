@@ -1,5 +1,6 @@
 import { Server, Socket } from 'socket.io';
 import { GameService } from '../services/game.service';
+import { RoomBroadcaster } from '../broadcast/RoomBroadcaster';
 import { logger } from '../utils/logger';
 import {
   antiCheatGuard,
@@ -13,12 +14,13 @@ import {
   CastKickVoteSchema,
   RestartGameSchema,
   TradeOfferSchema,
-  TradeResponseSchema
+  TradeResponseSchema,
+  CancelTradeSchema
 } from '../middleware/socketValidation';
 import { TradeOfferPayload } from '../types';
 
-// Simple active trade tracker for negotiation mapping
-const activeTrades: Record<string, TradeOfferPayload> = {};
+// Per-trade expiry timers keyed by roomId:tradeId
+const tradeExpiryTimers: Record<string, NodeJS.Timeout> = {};
 
 // Maps socket.id → roomId for fast lookup on disconnect
 const socketRoomMap: Record<string, string> = {};
@@ -37,9 +39,11 @@ const FINISHED_ROOM_TTL_MS = 5 * 60 * 1000;
 export class GameController {
   private io: Server;
   private gameService: GameService;
+  private broadcaster: RoomBroadcaster;
 
-  constructor(io: Server) {
+  constructor(io: Server, broadcaster: RoomBroadcaster) {
     this.io = io;
+    this.broadcaster = broadcaster;
     this.gameService = new GameService();
 
     // Start periodic room cleanup sweep every 5 minutes
@@ -58,7 +62,6 @@ export class GameController {
       try {
         const result = await this.gameService.processGameTimers(roomId);
         if (result) {
-          this.io.to(roomId).emit('state_updated', { state: result.state, log: result.log });
           this.processBotTurn(roomId, result.state);
         }
       } catch (err) {
@@ -110,12 +113,36 @@ export class GameController {
     this.activeAuctionsTimeout[roomId] = setTimeout(async () => {
       try {
         const { state, log } = await this.gameService.resolveAuction(roomId);
-        this.io.to(roomId).emit('state_updated', { state, log });
         delete this.activeAuctionsTimeout[roomId];
       } catch (err) {
         logger.error(`Error resolving auction for room ${roomId}`, err);
       }
     }, delay > 0 ? delay : 0);
+  }
+
+  private tradeTimerKey(roomId: string, tradeId: string): string {
+    return `${roomId}:${tradeId}`;
+  }
+
+  private clearTradeExpiryTimer(roomId: string, tradeId: string): void {
+    const key = this.tradeTimerKey(roomId, tradeId);
+    if (tradeExpiryTimers[key]) {
+      clearTimeout(tradeExpiryTimers[key]);
+      delete tradeExpiryTimers[key];
+    }
+  }
+
+  private scheduleTradeExpiry(roomId: string, tradeId: string, delayMs: number): void {
+    const key = this.tradeTimerKey(roomId, tradeId);
+    this.clearTradeExpiryTimer(roomId, tradeId);
+    tradeExpiryTimers[key] = setTimeout(async () => {
+      delete tradeExpiryTimers[key];
+      try {
+        await this.gameService.expireTrade(roomId, tradeId);
+      } catch (err) {
+        logger.error(`Error expiring trade ${tradeId} in room ${roomId}`, err);
+      }
+    }, delayMs > 0 ? delayMs : 0);
   }
 
   /**
@@ -153,6 +180,7 @@ export class GameController {
 
         // Join socket.io room channel for room-isolated broadcasts
         await socket.join(roomId);
+        await this.broadcaster.subscribeRoom(roomId);
         logger.info(`Socket ${socket.id} joined room channel: ${roomId}`);
         
         this.touchRoom(roomId);
@@ -167,7 +195,6 @@ export class GameController {
         socket.to(roomId).emit('player_joined', { userId, name, avatar });
         
         // Broadcast full state update to update existing player screens in lobby
-        this.io.to(roomId).emit('state_updated', { state, log: `${name} লবিতে যুক্ত হয়েছেন।` });
 
         // Send current game state and dynamic board configuration to newly connected client
         const boardTemplate = await this.gameService.loadBoardTemplate();
@@ -202,8 +229,6 @@ export class GameController {
           name: botName,
           avatar: botAvatar
         });
-        
-        this.io.to(roomId).emit('state_updated', { state: updatedState, log: `${botName} লবিতে যুক্ত হয়েছে।` });
       } catch (err: any) {
         logger.error(`Error in add_bot for room ${roomId}`, err);
         socket.emit('error_message', err.message || 'Failed to add bot');
@@ -247,10 +272,6 @@ export class GameController {
         if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
 
         const updatedState = await this.gameService.updateSettings(roomId, settings, playerId);
-        this.io.to(roomId).emit('state_updated', {
-          state: updatedState,
-          log: `লবির নিয়ম পরিবর্তন করা হয়েছে।`
-        });
       } catch (err: any) {
         logger.error(`Error in update_settings for room ${roomId}`, err);
         socket.emit('error_message', err.message || 'Failed to update settings');
@@ -268,10 +289,6 @@ export class GameController {
         if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
 
         const updatedState = await this.gameService.startGame(roomId, playerId);
-        this.io.to(roomId).emit('state_updated', {
-          state: updatedState,
-          log: `ম্যাচ শুরু হয়েছে!`
-        });
         this.processBotTurn(roomId, updatedState);
       } catch (err: any) {
         logger.error(`Error in start_game for room ${roomId}`, err);
@@ -294,8 +311,6 @@ export class GameController {
         if (state.gameStatus !== 'LOBBY') return socket.emit('error_message', 'Can only kick players from the lobby.');
 
         const { state: updatedState, log } = await this.gameService.kickPlayerFromLobby(roomId, playerId, targetId);
-
-        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
         this.io.to(targetId).emit('kicked_from_lobby');
 
       } catch (err: any) {
@@ -329,7 +344,6 @@ export class GameController {
         const { state: updatedState, log } = await this.gameService.rollDice(roomId, playerId);
 
         // Broadcast update to all clients in the room
-        this.io.to(roomId).emit('state_updated', { state: updatedState, log, lastRoll: updatedState.dice });
         this.processBotTurn(roomId, updatedState);
 
       } catch (err: any) {
@@ -358,8 +372,6 @@ export class GameController {
 
         // Execute action
         const { state: updatedState, log } = await this.gameService.buyProperty(roomId, playerId, tileIndex);
-
-        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
         this.processBotTurn(roomId, updatedState);
 
       } catch (err: any) {
@@ -385,8 +397,6 @@ export class GameController {
 
         const { state: updatedState, log } = await this.gameService.mortgageProperty(roomId, playerId, tileIndex);
 
-        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
-
       } catch (err: any) {
         logger.error(`Error in mortgage_property for room ${roomId}`, err);
         socket.emit('error_message', err.message || 'Validation error');
@@ -407,8 +417,6 @@ export class GameController {
 
         const { state: updatedState, log } = await this.gameService.unmortgageProperty(roomId, playerId, tileIndex);
 
-        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
-
       } catch (err: any) {
         logger.error(`Error in unmortgage_property for room ${roomId}`, err);
         socket.emit('error_message', err.message || 'Validation error');
@@ -428,8 +436,6 @@ export class GameController {
         if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
 
         const { state: updatedState, log } = await this.gameService.buildHouse(roomId, playerId, tileIndex);
-
-        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
       } catch (err: any) {
         logger.error(`Error in build_house for room ${roomId}`, err);
         socket.emit('error_message', err.message || 'Validation error');
@@ -449,8 +455,6 @@ export class GameController {
         if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
 
         const { state: updatedState, log } = await this.gameService.sellHouse(roomId, playerId, tileIndex);
-
-        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
       } catch (err: any) {
         logger.error(`Error in sell_house for room ${roomId}`, err);
         socket.emit('error_message', err.message || 'Validation error');
@@ -470,8 +474,6 @@ export class GameController {
         if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
 
         const { state: updatedState, log } = await this.gameService.sellProperty(roomId, playerId, tileIndex);
-
-        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
       } catch (err: any) {
         logger.error(`Error in sell_property for room ${roomId}`, err);
         socket.emit('error_message', err.message || 'Validation error');
@@ -491,8 +493,6 @@ export class GameController {
         if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
 
         const { state: updatedState, log } = await this.gameService.auctionProperty(roomId, playerId, tileIndex);
-
-        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
         this.startAuctionTimer(roomId, (updatedState as any).activeAuction.endTime);
       } catch (err: any) {
         logger.error(`Error in auction_property for room ${roomId}`, err);
@@ -512,8 +512,6 @@ export class GameController {
         if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
 
         const { state: updatedState, log } = await this.gameService.placeBid(roomId, playerId, amountToAdd);
-
-        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
         this.startAuctionTimer(roomId, (updatedState as any).activeAuction.endTime);
       } catch (err: any) {
         logger.error(`Error in place_bid for room ${roomId}`, err);
@@ -526,7 +524,9 @@ export class GameController {
       if (!roomId) return socket.emit('error_message', 'Not in a game room');
 
       try {
-        const offer = TradeOfferSchema.parse(payload);
+        const parsed = TradeOfferSchema.parse(payload);
+        const { replacesTradeId, ...offerFields } = parsed;
+        const offer = offerFields as TradeOfferPayload;
 
         const identityCheck = antiCheatGuard.verifySocketIdentity(socket, offer.senderId);
         if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
@@ -534,47 +534,42 @@ export class GameController {
         const state = await this.gameService.getRoomState(roomId);
         if (!state) return socket.emit('error_message', 'Game session not found.');
 
-        // Verify receiver belongs to same game
         const receiverCheck = antiCheatGuard.verifyMembership(state, offer.receiverId);
         if (!receiverCheck.valid) return socket.emit('error_message', receiverCheck.error);
 
-        // If duration is provided, calculate expiration
-        if (offer.durationSeconds && offer.durationSeconds > 0) {
-          offer.expiresAt = Date.now() + offer.durationSeconds * 1000;
+        const { tradeId, expiresAt } = await this.gameService.proposeTrade(roomId, offer, replacesTradeId);
+
+        if (replacesTradeId) {
+          this.clearTradeExpiryTimer(roomId, replacesTradeId);
         }
 
-        // Create random trade ID
-        const tradeId = `trade_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-        activeTrades[tradeId] = offer;
-
-        logger.info(`Trade proposed in room ${roomId}: ${tradeId} from ${offer.senderId} to ${offer.receiverId} with duration ${offer.durationSeconds || 'infinite'}s`);
-
-        // Forward proposal to room (broadcast so everyone receives it and can track countdown/expiry)
-        this.io.to(roomId).emit('trade_proposed', {
-          tradeId,
-          offer
-        });
-
-        // Set server-side auto-expiry timeout
-        if (offer.durationSeconds && offer.durationSeconds > 0) {
-          setTimeout(async () => {
-            if (activeTrades[tradeId]) {
-              delete activeTrades[tradeId];
-              const latestState = await this.gameService.getRoomState(roomId);
-              const senderName = latestState?.players[offer.senderId]?.name || 'Player';
-              const receiverName = latestState?.players[offer.receiverId]?.name || 'Player';
-              const log = `${senderName} এবং ${receiverName}-এর মধ্যকার চুক্তির মেয়াদ শেষ হয়ে গেছে।`;
-              
-              logger.info(`Trade ${tradeId} expired in room ${roomId}`);
-              this.io.to(roomId).emit('trade_declined', { tradeId, log });
-              this.io.to(roomId).emit('trade_resolved', { tradeId });
-            }
-          }, offer.durationSeconds * 1000);
+        if (expiresAt) {
+          const delayMs = Math.max(0, expiresAt - Date.now());
+          this.scheduleTradeExpiry(roomId, tradeId, delayMs);
         }
 
       } catch (err: any) {
         logger.error(`Error in propose_trade for room ${roomId}`, err);
         socket.emit('error_message', err.message || 'Trade validation error');
+      }
+    });
+
+    // --- 6b. Cancel Trade Event ---
+    socket.on('cancel_trade', async (payload: any) => {
+      const roomId = this.getSocketRoom(socket);
+      if (!roomId) return socket.emit('error_message', 'Not in a game room');
+
+      try {
+        const { playerId, tradeId } = CancelTradeSchema.parse(payload);
+
+        const identityCheck = antiCheatGuard.verifySocketIdentity(socket, playerId);
+        if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
+
+        await this.gameService.cancelTrade(roomId, tradeId, playerId);
+        this.clearTradeExpiryTimer(roomId, tradeId);
+      } catch (err: any) {
+        logger.error(`Error in cancel_trade for room ${roomId}`, err);
+        socket.emit('error_message', err.message || 'Trade cancel error');
       }
     });
 
@@ -597,7 +592,6 @@ export class GameController {
         if (!turnCheck.valid) return socket.emit('error_message', turnCheck.error);
 
         const { state: updatedState, log } = await this.gameService.devTeleport(roomId, playerId, targetIndex);
-        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
       } catch (err: any) {
         logger.error(`Error in dev_teleport for room ${roomId}`, err);
         socket.emit('error_message', err.message || 'Validation error');
@@ -625,7 +619,6 @@ export class GameController {
         if (!turnCheck.valid) return socket.emit('error_message', turnCheck.error);
 
         const { state: updatedState, log } = await this.gameService.devAddFunds(roomId, playerId, amount);
-        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
       } catch (err: any) {
         logger.error(`Error in dev_add_funds for room ${roomId}`, err);
         socket.emit('error_message', err.message || 'Validation error');
@@ -651,7 +644,6 @@ export class GameController {
         if (!turnCheck.valid) return socket.emit('error_message', turnCheck.error);
 
         const { state: updatedState, log } = await this.gameService.devRollDice(roomId, playerId, d1, d2);
-        this.io.to(roomId).emit('state_updated', { state: updatedState, log, lastRoll: updatedState.dice });
       } catch (err: any) {
         logger.error(`Error in dev_roll_dice for room ${roomId}`, err);
         socket.emit('error_message', err.message || 'Validation error');
@@ -669,7 +661,6 @@ export class GameController {
         if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
 
         const { state: updatedState, log } = await this.gameService.devForceCrash(roomId, playerId);
-        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
       } catch (err: any) {
         logger.error(`Error in dev_force_crash for room ${roomId}`, err);
         socket.emit('error_message', err.message || 'Validation error');
@@ -687,7 +678,6 @@ export class GameController {
         if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
 
         const { state: updatedState, log } = await this.gameService.devSetNextCrash(roomId, playerId, delayMinutes);
-        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
       } catch (err: any) {
         logger.error(`Error in dev_set_next_crash for room ${roomId}`, err);
         socket.emit('error_message', err.message || 'Validation error');
@@ -705,7 +695,6 @@ export class GameController {
         if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
 
         const { state: updatedState, log } = await this.gameService.devGivePowerCard(roomId, playerId, cardType);
-        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
       } catch (err: any) {
         logger.error(`Error in dev_give_power_card for room ${roomId}`, err);
         socket.emit('error_message', err.message || 'Validation error');
@@ -723,7 +712,6 @@ export class GameController {
         if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
 
         const { state: updatedState, log } = await this.gameService.usePowerCard(roomId, playerId, cardType, actionPayload);
-        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
       } catch (err: any) {
         logger.error(`Error in use_power_card for room ${roomId}`, err);
         socket.emit('error_message', err.message || 'Validation error');
@@ -739,7 +727,6 @@ export class GameController {
         if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
         
         const { state: updatedState, log } = await this.gameService.devForcePolice(roomId, playerId);
-        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
       } catch (err: any) {
         logger.error(`Error in dev_force_police for room ${roomId}`, err);
         socket.emit('error_message', err.message || 'Validation error');
@@ -755,7 +742,6 @@ export class GameController {
         if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
 
         const { state: updatedState, log } = await this.gameService.devSetNextPolice(roomId, playerId, delayMinutes);
-        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
       } catch (err: any) {
         logger.error(`Error in dev_set_next_police for room ${roomId}`, err);
         socket.emit('error_message', err.message || 'Validation error');
@@ -773,36 +759,13 @@ export class GameController {
         const identityCheck = antiCheatGuard.verifySocketIdentity(socket, playerId);
         if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
 
-        const offer = activeTrades[tradeId];
-        if (!offer) return socket.emit('error_message', 'Trade offer expired or does not exist.');
-
-        if (offer.receiverId !== playerId) {
-          return socket.emit('error_message', 'Unauthorized. You are not the receiver of this trade.');
-        }
-
-        const state = await this.gameService.getRoomState(roomId);
-        if (!state) return socket.emit('error_message', 'Game session not found.');
-
-        // Clean trade record
-        delete activeTrades[tradeId];
-
         if (accept) {
-          // Execute state mutation transaction
-          const { state: updatedState, log } = await this.gameService.executeTrade(roomId, offer);
-          this.io.to(roomId).emit('state_updated', { state: updatedState, log });
-          this.io.to(roomId).emit('trade_resolved', { tradeId });
+          await this.gameService.acceptTrade(roomId, tradeId, playerId);
         } else {
-          // Emit trade refusal event
-          const state = await this.gameService.getRoomState(roomId);
-          const senderName = state?.players[offer.senderId]?.name || 'Player';
-          const receiverName = state?.players[offer.receiverId]?.name || 'Player';
-          const log = `${receiverName}, ${senderName}-এর প্রস্তাব বাতিল করে দিয়েছেন।`;
-          
-          logger.info(`Trade ${tradeId} declined: ${log}`);
-          this.io.to(roomId).emit('trade_declined', { tradeId, log });
-          this.io.to(roomId).emit('trade_resolved', { tradeId });
+          await this.gameService.cancelTrade(roomId, tradeId, playerId);
         }
 
+        this.clearTradeExpiryTimer(roomId, tradeId);
       } catch (err: any) {
         logger.error(`Error in respond_to_trade for room ${roomId}`, err);
         socket.emit('error_message', err.message || 'Trade processing error');
@@ -837,8 +800,6 @@ export class GameController {
         }
 
         const { state: updatedState, log } = await this.gameService.endTurn(roomId, playerId);
-
-        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
         this.processBotTurn(roomId, updatedState);
 
       } catch (err: any) {
@@ -857,7 +818,6 @@ export class GameController {
         if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
 
         const { state: updatedState, log } = await this.gameService.startLottery(roomId, playerId || userId);
-        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
         this.processBotTurn(roomId, updatedState);
       } catch (err: any) {
         logger.error(`Error in lottery_start for room ${roomId}`, err);
@@ -875,7 +835,6 @@ export class GameController {
         if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
 
         const { state: updatedState, log } = await this.gameService.revealLotteryDigit(roomId, playerId || userId);
-        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
         this.processBotTurn(roomId, updatedState);
       } catch (err: any) {
         logger.error(`Error in lottery_reveal for room ${roomId}`, err);
@@ -888,7 +847,6 @@ export class GameController {
       if (!roomId) return socket.emit('error_message', 'Not in a game room');
       try {
         const { state: updatedState, log } = await this.gameService.resolveCard(roomId, userId);
-        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
         this.processBotTurn(roomId, updatedState);
       } catch (err: any) {
         logger.error(`Error in resolve_card for room ${roomId}`, err);
@@ -901,7 +859,6 @@ export class GameController {
       if (!roomId) return socket.emit('error_message', 'Not in a game room');
       try {
         const { state: updatedState, log } = await this.gameService.sellPardonCardToBank(roomId, userId);
-        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
       } catch (err: any) {
         logger.error(`Error in sell_pardon_card for room ${roomId}`, err);
         socket.emit('error_message', err.message || 'Failed to sell pardon card');
@@ -913,7 +870,6 @@ export class GameController {
       if (!roomId) return socket.emit('error_message', 'Not in a game room');
       try {
         const { state: updatedState, log } = await this.gameService.usePardonCardToEscape(roomId, userId);
-        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
       } catch (err: any) {
         logger.error(`Error in use_pardon_card for room ${roomId}`, err);
         socket.emit('error_message', err.message || 'Failed to use pardon card');
@@ -929,7 +885,6 @@ export class GameController {
         if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
 
         const { state: updatedState, log } = await this.gameService.takeLoan(roomId, playerId, amount);
-        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
       } catch (err: any) {
         logger.error(`Error in take_loan for room ${roomId}`, err);
         socket.emit('error_message', err.message || 'Failed to take loan');
@@ -945,7 +900,6 @@ export class GameController {
         if (!identityCheck.valid) return socket.emit('error_message', identityCheck.error);
 
         const { state: updatedState, log } = await this.gameService.repayLoan(roomId, playerId, amount);
-        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
       } catch (err: any) {
         logger.error(`Error in repay_loan for room ${roomId}`, err);
         socket.emit('error_message', err.message || 'Failed to repay loan');
@@ -971,8 +925,6 @@ export class GameController {
         if (!turnCheck.valid) return socket.emit('error_message', turnCheck.error);
 
         const { state: updatedState, log } = await this.gameService.declareBankruptcy(roomId, playerId);
-
-        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
         this.processBotTurn(roomId, updatedState);
 
       } catch (err: any) {
@@ -1000,8 +952,6 @@ export class GameController {
 
         const { state: updatedState, log } = await this.gameService.payJailFine(roomId, playerId);
 
-        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
-
       } catch (err: any) {
         logger.error(`Error in pay_jail_fine for room ${roomId}`, err);
         socket.emit('error_message', err.message || 'Jail fine payment failed');
@@ -1026,8 +976,6 @@ export class GameController {
         if (!membershipCheck.valid) return socket.emit('error_message', membershipCheck.error);
 
         const { state: updatedState, log } = await this.gameService.castKickVote(roomId, playerId, targetPlayerId);
-
-        this.io.to(roomId).emit('state_updated', { state: updatedState, log });
         this.processBotTurn(roomId, updatedState);
       } catch (err: any) {
         logger.error(`Error in cast_kick_vote for room ${roomId}`, err);
@@ -1053,11 +1001,6 @@ export class GameController {
         if (!membershipCheck.valid) return socket.emit('error_message', membershipCheck.error);
 
         const updatedState = await this.gameService.restartGame(roomId, playerId);
-
-        this.io.to(roomId).emit('state_updated', {
-          state: updatedState,
-          log: `নতুন গেম শুরু! ${updatedState.players[updatedState.currentTurnPlayerId].name}-এর চাল দিয়ে শুরু হলো।`
-        });
         this.processBotTurn(roomId, updatedState);
       } catch (err: any) {
         logger.error(`Error in restart_game for room ${roomId}`, err);
@@ -1105,13 +1048,11 @@ export class GameController {
 
         if (latestState.turnStatus === 'MUST_ROLL') {
           const { state: updatedState, log } = await this.gameService.rollDice(roomId, currentTurnPlayerId);
-          this.io.to(roomId).emit('state_updated', { state: updatedState, log });
           this.processBotTurn(roomId, updatedState);
         } else if (latestState.turnStatus === 'MUST_ACT_OR_END' || latestState.turnStatus === 'BANKRUPTCY_PENDING') {
           const botPlayer = latestState.players[currentTurnPlayerId];
           if (botPlayer.balance < 0) {
             const { state: updatedState, log } = await this.gameService.declareBankruptcy(roomId, currentTurnPlayerId);
-            this.io.to(roomId).emit('state_updated', { state: updatedState, log });
             this.processBotTurn(roomId, updatedState);
             return;
           }
@@ -1123,7 +1064,6 @@ export class GameController {
           if (tile && (tile.type === 'STREET' || tile.type === 'RAILROAD' || tile.type === 'UTILITY')) {
             if (!latestState.properties[botPosition] && botPlayer.balance >= (tile.price || 0)) {
               const { state: updatedState, log } = await this.gameService.buyProperty(roomId, currentTurnPlayerId, botPosition);
-              this.io.to(roomId).emit('state_updated', { state: updatedState, log });
               this.processBotTurn(roomId, updatedState);
               return;
             }
@@ -1131,24 +1071,20 @@ export class GameController {
           
           // End turn
           const { state: updatedState, log } = await this.gameService.endTurn(roomId, currentTurnPlayerId);
-          this.io.to(roomId).emit('state_updated', { state: updatedState, log });
           this.processBotTurn(roomId, updatedState);
         } else if (latestState.turnStatus === 'MUST_RESOLVE_CARD') {
           // Bot resolves chance/chest card
           const { state: updatedState, log } = await this.gameService.resolveCard(roomId, currentTurnPlayerId);
-          this.io.to(roomId).emit('state_updated', { state: updatedState, log });
           this.processBotTurn(roomId, updatedState);
         } else if (latestState.turnStatus === 'MUST_RESOLVE_LOTTERY') {
           // Bot auto-starts and auto-reveals all lottery digits
           let currentBotState = latestState;
           if (currentBotState.activeLottery && !currentBotState.activeLottery.hasStarted) {
             const { state: startedState, log: startLog } = await this.gameService.startLottery(roomId, currentTurnPlayerId);
-            this.io.to(roomId).emit('state_updated', { state: startedState, log: startLog });
             currentBotState = startedState;
           }
           while (currentBotState.activeLottery && !currentBotState.activeLottery.isComplete) {
             const { state: revealedState, log: revealLog } = await this.gameService.revealLotteryDigit(roomId, currentTurnPlayerId);
-            this.io.to(roomId).emit('state_updated', { state: revealedState, log: revealLog });
             currentBotState = revealedState;
           }
           this.processBotTurn(roomId, currentBotState);
@@ -1158,7 +1094,6 @@ export class GameController {
         // Fallback to ending turn to avoid stuck state
         try {
           const { state: updatedState, log } = await this.gameService.endTurn(roomId, currentTurnPlayerId);
-          this.io.to(roomId).emit('state_updated', { state: updatedState, log });
           this.processBotTurn(roomId, updatedState);
         } catch (fallbackErr) {}
       }

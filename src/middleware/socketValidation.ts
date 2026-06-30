@@ -52,14 +52,22 @@ export const TradeOfferSchema = z.object({
   requestCash: z.number().nonnegative(),
   offerPropertyIndexes: z.array(z.number().int().min(0).max(39)),
   requestPropertyIndexes: z.array(z.number().int().min(0).max(39)),
+  offerPardonCards: z.number().int().nonnegative().optional(),
+  requestPardonCards: z.number().int().nonnegative().optional(),
   durationSeconds: z.number().int().nonnegative().optional(),
   expiresAt: z.number().int().nonnegative().optional(),
+  replacesTradeId: z.string().min(1).optional(),
 });
 
 export const TradeResponseSchema = z.object({
   playerId: z.string().min(1),
   tradeId: z.string().min(1),
   accept: z.boolean(),
+});
+
+export const CancelTradeSchema = z.object({
+  playerId: z.string().min(1),
+  tradeId: z.string().min(1),
 });
 
 /**

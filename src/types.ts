@@ -58,9 +58,9 @@ export interface AuctionState {
 
 export interface MarketCrashState {
   active: boolean;
-  nextCrashTime: number | null; // Timestamp for when the next crash starts (null if max crashes reached)
-  crashEndTime: number | null; // Timestamp for when the current crash ends (null if not active)
-  crashCount: number; // 0 to 3
+  nextCrashTime: number | null;
+  crashEndTime: number | null;
+  crashCount: number;
 }
 
 export interface TrafficPoliceState {
@@ -68,6 +68,16 @@ export interface TrafficPoliceState {
   position: number | null;
   nextAppearanceTime: number | null;
   disappearanceTime: number | null;
+}
+
+export type WorldEventType = 'MARKET_CRASH' | 'TRAFFIC_POLICE';
+export type ActiveWorldEvent = 'NONE' | WorldEventType;
+
+export interface WorldEventSchedule {
+  activeEvent: ActiveWorldEvent;
+  nextEventType: WorldEventType | null;
+  nextEventTime: number | null;
+  cooldownUntil: number | null;
 }
 
 export interface PendingRentOwed {
@@ -107,11 +117,14 @@ export interface GameState {
     balance: number;
   };
   trafficPolice?: TrafficPoliceState;
+  worldEvents?: WorldEventSchedule;
   kickVotes?: Record<string, string>; // voterId -> targetPlayerId to kick
   /** Remaining rent owed after pocket-only payment on landing */
   pendingRentOwed?: PendingRentOwed | null;
   /** Active lottery state when a player lands on the LOTTERY tile */
   activeLottery?: LotteryState | null;
+  /** Open trade proposals visible to all players in the room */
+  pendingTrades?: PendingTradeEntry[];
 }
 
 export type TileType =
@@ -172,6 +185,13 @@ export interface TradeOfferPayload {
   requestPardonCards?: number;
   durationSeconds?: number;
   expiresAt?: number;
+}
+
+export interface PendingTradeEntry {
+  tradeId: string;
+  offer: TradeOfferPayload;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface TradeResponsePayload {

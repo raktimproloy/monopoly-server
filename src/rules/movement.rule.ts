@@ -111,64 +111,56 @@ export function executeMovement(
   // Check if passed GO
   if (newPosition < oldPosition) {
     if (newPosition === 0) {
-      if (newState.marketCrash?.active) {
-        description += ` ➡️ GO তে থেমে ৳০ বোনাস (মার্কেট ক্র্যাশ)!`;
-      } else {
-        let addedMoney = 300;
-        let loanDeducted = 0;
-        if (player.loan && player.loan.remainingTurns > 0) {
-          if (player.loan.remainingTurns === 1) {
-            loanDeducted = player.loan.remainingAmount;
-          } else {
-            loanDeducted = Math.min(player.loan.deductionPerTurn, player.loan.remainingAmount);
-          }
-          player.loan.remainingAmount -= loanDeducted;
-          player.loan.remainingTurns -= 1;
-          
-          if (player.loan.remainingTurns > 0 && player.loan.remainingAmount > 0) {
-            player.loan.deductionPerTurn = Math.ceil(player.loan.remainingAmount / player.loan.remainingTurns);
-          }
-
-          if (player.loan.remainingTurns <= 0 || player.loan.remainingAmount <= 0) {
-            player.loan = undefined;
-          }
+      let addedMoney = 300;
+      let loanDeducted = 0;
+      if (player.loan && player.loan.remainingTurns > 0) {
+        if (player.loan.remainingTurns === 1) {
+          loanDeducted = player.loan.remainingAmount;
+        } else {
+          loanDeducted = Math.min(player.loan.deductionPerTurn, player.loan.remainingAmount);
         }
-        player.balance += (addedMoney - loanDeducted);
-        newState.governmentBank.balance -= (addedMoney - loanDeducted);
-        description += ` ➡️ GO তে থেমে ৳৩০০ বোনাস!`;
-        if (loanDeducted > 0) {
-          description += ` 🏦 (লোন বাবদ ৳${toBanglaNum(loanDeducted)} কাটা হয়েছে)`;
+        player.loan.remainingAmount -= loanDeducted;
+        player.loan.remainingTurns -= 1;
+        
+        if (player.loan.remainingTurns > 0 && player.loan.remainingAmount > 0) {
+          player.loan.deductionPerTurn = Math.ceil(player.loan.remainingAmount / player.loan.remainingTurns);
+        }
+
+        if (player.loan.remainingTurns <= 0 || player.loan.remainingAmount <= 0) {
+          player.loan = undefined;
         }
       }
+      player.balance += (addedMoney - loanDeducted);
+      newState.governmentBank.balance -= (addedMoney - loanDeducted);
+      description += ` ➡️ GO তে থেমে ৳৩০০ বোনাস!`;
+      if (loanDeducted > 0) {
+        description += ` 🏦 (লোন বাবদ ৳${toBanglaNum(loanDeducted)} কাটা হয়েছে)`;
+      }
     } else {
-      if (newState.marketCrash?.active) {
-        description += ` (মার্কেট ক্র্যাশের জন্য GO বোনাস নেই)`;
-      } else {
-        let addedMoney = 200;
-        let loanDeducted = 0;
-        if (player.loan && player.loan.remainingTurns > 0) {
-          if (player.loan.remainingTurns === 1) {
-            loanDeducted = player.loan.remainingAmount;
-          } else {
-            loanDeducted = Math.min(player.loan.deductionPerTurn, player.loan.remainingAmount);
-          }
-          player.loan.remainingAmount -= loanDeducted;
-          player.loan.remainingTurns -= 1;
-
-          if (player.loan.remainingTurns > 0 && player.loan.remainingAmount > 0) {
-            player.loan.deductionPerTurn = Math.ceil(player.loan.remainingAmount / player.loan.remainingTurns);
-          }
-
-          if (player.loan.remainingTurns <= 0 || player.loan.remainingAmount <= 0) {
-            player.loan = undefined;
-          }
+      let addedMoney = 200;
+      let loanDeducted = 0;
+      if (player.loan && player.loan.remainingTurns > 0) {
+        if (player.loan.remainingTurns === 1) {
+          loanDeducted = player.loan.remainingAmount;
+        } else {
+          loanDeducted = Math.min(player.loan.deductionPerTurn, player.loan.remainingAmount);
         }
-        player.balance += (addedMoney - loanDeducted);
-        newState.governmentBank.balance -= (addedMoney - loanDeducted);
-        description += generateLog('goCollected', { oldPos: oldPosition, newPos: newPosition });
-        if (loanDeducted > 0) {
-          description += ` 🏦 (লোন বাবদ ৳${toBanglaNum(loanDeducted)} কাটা হয়েছে)`;
+        player.loan.remainingAmount -= loanDeducted;
+        player.loan.remainingTurns -= 1;
+
+        if (player.loan.remainingTurns > 0 && player.loan.remainingAmount > 0) {
+          player.loan.deductionPerTurn = Math.ceil(player.loan.remainingAmount / player.loan.remainingTurns);
         }
+
+        if (player.loan.remainingTurns <= 0 || player.loan.remainingAmount <= 0) {
+          player.loan = undefined;
+        }
+      }
+      player.balance += (addedMoney - loanDeducted);
+      newState.governmentBank.balance -= (addedMoney - loanDeducted);
+      description += generateLog('goCollected', { oldPos: oldPosition, newPos: newPosition });
+      if (loanDeducted > 0) {
+        description += ` 🏦 (লোন বাবদ ৳${toBanglaNum(loanDeducted)} কাটা হয়েছে)`;
       }
     }
   } else {
@@ -272,19 +264,7 @@ export function executeMovement(
 
   // Draw Card Logic (Chance / Chest)
   if (destTile.type === 'CHANCE' || destTile.type === 'CHEST') {
-    if (newState.marketCrash?.active) {
-      newState.drawnCard = {
-        type: destTile.type,
-        text: 'মার্কেট বন্ধ! মার্কেট ক্র্যাশ চলায় এই কার্ডের কোনো মূল্য নেই।',
-        action: 'NONE'
-      };
-      description += ` ➡️ কার্ড তুলেছেন।`;
-      nextAction = 'RESOLVE_CARD';
-      newState.turnStatus = 'MUST_RESOLVE_CARD';
-      return { newState, description, nextAction };
-    }
-
-    let card = drawCard();
+    const card = drawCard(destTile.type === 'CHEST' ? { moneyOnly: true } : undefined);
 
     if (card) {
       newState.drawnCard = {
