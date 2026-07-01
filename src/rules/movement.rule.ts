@@ -1,6 +1,10 @@
 import { GameState, Player, BoardTile } from '../types';
 import { drawCard, generateLog } from '../utils/logGenerator';
 import { toBanglaNum } from '../utils/format';
+import {
+  buildRandomPropertyVisitCardText,
+  pickRandomPurchasableTile,
+} from './cardVisit.rule';
 
 export interface MovementResult {
   newState: GameState;
@@ -70,7 +74,7 @@ export function executeMovement(
       newState.doubleRollCount = 0;
       newState.turnStatus = 'MUST_ACT_OR_END';
       description += ` ➡️ পরপর ৩ বার একই দান (ডাবল) পড়ায় জেলে পাঠানো হলো!`;
-      return { newState, description, nextAction: 'NONE' };
+      return { newState, description, nextAction: 'AUTO_END_TURN' };
     }
   } else {
     newState.doubleRollCount = 0;
@@ -169,7 +173,7 @@ export function executeMovement(
 
   // 4. Evaluate destination tile
   const destTile = boardTiles[newPosition];
-  let nextAction: 'BUY_PROPERTY' | 'PAY_RENT' | 'NONE' | 'RESOLVE_CARD' = 'NONE';
+  let nextAction: MovementResult['nextAction'] = 'NONE';
   let rentDuePlayerId: string | undefined;
   let rentAmount: number | undefined;
 
@@ -180,7 +184,7 @@ export function executeMovement(
     newState.doubleRollCount = 0;
     description += ` ➡️ সোজা জেলে!`;
     newState.turnStatus = 'MUST_ACT_OR_END';
-    return { newState, description, nextAction: 'NONE' };
+    return { newState, description, nextAction: 'AUTO_END_TURN' };
   }
 
   if (destTile.type === 'TAX') {
@@ -208,7 +212,7 @@ export function executeMovement(
       description += ` (+৳${toBanglaNum(newState.freeParkingPool || 0)})`;
       newState.freeParkingPool = 0;
     }
-    nextAction = 'NONE';
+    nextAction = 'AUTO_END_TURN';
   }
 
   // Lottery Tile Logic
@@ -267,11 +271,23 @@ export function executeMovement(
     const card = drawCard(destTile.type === 'CHEST' ? { moneyOnly: true } : undefined);
 
     if (card) {
+      let cardText = card.text;
+      let cardValue = card.value;
+      let cardAction = card.action;
+
+      if (card.action === 'VISIT_RANDOM_PROPERTY') {
+        const target = pickRandomPurchasableTile(boardTiles, newPosition);
+        if (target) {
+          cardValue = target.index;
+          cardText = buildRandomPropertyVisitCardText(newState, playerId, target, boardTiles);
+        }
+      }
+
       newState.drawnCard = {
         type: destTile.type,
-        text: card.text,
-        action: card.action,
-        value: card.value,
+        text: cardText,
+        action: cardAction,
+        value: cardValue,
         isSecret: card.isSecret
       };
       
@@ -379,7 +395,7 @@ export function executeMovement(
   if (nextAction === 'NONE') {
     newState.turnStatus = hasActiveDouble ? 'MUST_ROLL' : 'MUST_ACT_OR_END';
   } else if (nextAction === 'PAY_RENT') {
-    newState.turnStatus = 'BANKRUPTCY_PENDING'; // player must resolve rent before turn actions
+    newState.turnStatus = 'MUST_ACT_OR_END';
   } else if (nextAction === 'BUY_PROPERTY') {
     newState.turnStatus = 'MUST_ACT_OR_END';
   } else if (nextAction === 'AUTO_END_TURN') {

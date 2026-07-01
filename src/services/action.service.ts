@@ -1,14 +1,33 @@
 import { RoomService } from './room.service';
 import { GameState, BoardTile } from '../types';
-import { executeMovement, payRent, calculateRentAtTile } from '../rules';
+import { executeMovement, payRent, calculateRentAtTile, executeRandomPropertyVisit } from '../rules';
 import { generateLog } from '../utils/logGenerator';
 import { toBanglaNum } from '../utils/format';
+
+const AUTO_END_TURN_DELAY_MS = 800;
 
 export class ActionService {
   private roomService: RoomService;
 
   constructor(roomService: RoomService) {
     this.roomService = roomService;
+  }
+
+  private scheduleAutoEndTurn(roomId: string, playerId: string, delayMs = AUTO_END_TURN_DELAY_MS): void {
+    setTimeout(async () => {
+      try {
+        const currentState = await this.roomService.getRoomState(roomId);
+        if (
+          currentState &&
+          currentState.currentTurnPlayerId === playerId &&
+          currentState.turnStatus === 'MUST_ACT_OR_END'
+        ) {
+          await this.endTurn(roomId, playerId);
+        }
+      } catch (_e) {
+        // ignore race / stale turn
+      }
+    }, delayMs);
   }
 
   /**
@@ -93,6 +112,10 @@ export class ActionService {
       finalDescription
     );
 
+    if (nextAction === 'AUTO_END_TURN') {
+      this.scheduleAutoEndTurn(roomId, playerId);
+    }
+
     return { state: savedState, log: finalDescription };
   }
 
@@ -171,14 +194,7 @@ export class ActionService {
     );
 
     if (nextAction === 'AUTO_END_TURN') {
-      setTimeout(async () => {
-        try {
-          const currentState = await this.roomService.getRoomState(roomId);
-          if (currentState && currentState.currentTurnPlayerId === playerId && currentState.turnStatus === 'MUST_ACT_OR_END') {
-            await this.endTurn(roomId, playerId);
-          }
-        } catch (e) {}
-      }, 2500);
+      this.scheduleAutoEndTurn(roomId, playerId, 2500);
     }
 
     return { state: savedState, log: finalDescription };
@@ -225,14 +241,7 @@ export class ActionService {
     );
 
     if (nextAction === 'AUTO_END_TURN') {
-      setTimeout(async () => {
-        try {
-          const currentState = await this.roomService.getRoomState(roomId);
-          if (currentState && currentState.currentTurnPlayerId === playerId && currentState.turnStatus === 'MUST_ACT_OR_END') {
-            await this.endTurn(roomId, playerId);
-          }
-        } catch (e) {}
-      }, 2500);
+      this.scheduleAutoEndTurn(roomId, playerId, 2500);
     }
 
     return { state: savedState, log: finalDescription };
@@ -254,12 +263,6 @@ export class ActionService {
 
     if (player.balance < 0) {
       throw new Error('আপনার ব্যালেন্স নেতিবাচক, টার্ন শেষ করা সম্ভব নয়! সম্পত্তি বিক্রি করুন বা দেউলিয়া ঘোষণা করুন।');
-    }
-    if (
-      state.pendingRentOwed?.debtorId === playerId &&
-      state.pendingRentOwed.remainingAmount > 0
-    ) {
-      throw new Error('আপনাকে এখনো ভাড়া পরিশোধ করতে হবে! সম্পত্তি মর্টগেজ করুন বা বিক্রি করে পরিশোধ করুন, অথবা দেউলিয়া ঘোষণা করুন।');
     }
 
     const newState = JSON.parse(JSON.stringify(state)) as GameState;
@@ -538,7 +541,7 @@ export class ActionService {
     }
 
     const { tiles: boardTiles } = await this.roomService.loadBoardTemplate();
-    const newState = JSON.parse(JSON.stringify(state)) as GameState;
+    let newState = JSON.parse(JSON.stringify(state)) as GameState;
     const player = newState.players[playerId];
 
     const logKey = card.type === 'CHANCE' ? 'chanceDrawn' : 'chestDrawn';
@@ -615,12 +618,39 @@ export class ActionService {
         description += ` (আপনি অন্যান্য ${toBanglaNum(activeOtherPlayers.length)} জন সক্রিয় খেলোয়াড়কে প্রত্যেকে ৳${toBanglaNum(giftAmount)} করে দিয়েছেন)`;
         break;
       }
+      case 'VISIT_RANDOM_PROPERTY': {
+        if (card.value === undefined) {
+          throw new Error('র্যান্ডম সম্পত্তি কার্ডের গন্তব্য নির্ধারণ করা যায়নি।');
+        }
+
+        const visit = executeRandomPropertyVisit(newState, playerId, card.value, boardTiles);
+        newState = visit.newState;
+        description += visit.description;
+
+        if (visit.nextAction === 'PAY_RENT' && visit.rentDuePlayerId && visit.rentAmount) {
+          const rentResult = payRent(
+            newState,
+            playerId,
+            visit.rentDuePlayerId,
+            visit.rentAmount,
+            card.value
+          );
+          newState = rentResult.newState;
+          description += ' ' + rentResult.description;
+        }
+        break;
+      }
     }
 
     if (card.isSecret) {
-      description = `${player.name} একটি গোপন কার্ড পেয়েছেন!`;
+      if (card.action === 'GET_OUT_OF_JAIL_FREE') {
+        description = `${player.name} পার্ডন কার্ড পেয়েছেন!`;
+      } else if (card.action === 'BECOME_A_DON') {
+        description = `${player.name} পাওয়ার কার্ড পেয়েছেন!`;
+      } else {
+        description = `${player.name} একটি গোপন কার্ড পেয়েছেন!`;
+      }
     } else {
-      // Prepend player name
       description = `${player.name} ${description}`;
     }
 
@@ -635,6 +665,10 @@ export class ActionService {
       { cardAction: card.action },
       description
     );
+
+    if (card.action === 'GO_TO_JAIL') {
+      this.scheduleAutoEndTurn(roomId, playerId);
+    }
 
     return { state: savedState, log: description };
   }

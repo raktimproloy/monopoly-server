@@ -338,9 +338,6 @@ export function applyRentDebtCollection(
 
   if (activeDebt.remainingAmount <= 0) {
     newState.pendingRentOwed = null;
-    if (newState.turnStatus === 'BANKRUPTCY_PENDING') {
-      newState.turnStatus = 'MUST_ACT_OR_END';
-    }
   }
 
   return { newState, extraDescription };
@@ -385,12 +382,12 @@ export function payRent(
       tileIndex,
       fullRentAmount: rentAmount,
     };
-    newState.turnStatus = 'BANKRUPTCY_PENDING';
     description += ` (মোট ভাড়া ৳${toBanglaNum(rentAmount)}, পকেটে ছিল ৳${toBanglaNum(actualPaid)}। বাকি ৳${toBanglaNum(remaining)} — বিক্রি/বন্ধক করলে ${owner.name} পাবেন।)`;
   } else {
     newState.pendingRentOwed = null;
-    newState.turnStatus = 'MUST_ACT_OR_END';
   }
+
+  newState.turnStatus = renter.balance < 0 ? 'BANKRUPTCY_PENDING' : 'MUST_ACT_OR_END';
 
   return { newState, description };
 }

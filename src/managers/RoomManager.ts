@@ -88,13 +88,11 @@ export class RoomManager extends EventEmitter {
     const currentTurnPlayer = newState.players[newState.currentTurnPlayerId];
     if (!currentTurnPlayer) return newState;
 
-    const owesRent =
-      newState.pendingRentOwed?.debtorId === newState.currentTurnPlayerId &&
-      (newState.pendingRentOwed?.remainingAmount ?? 0) > 0;
+    const canEndTurn = currentTurnPlayer.balance >= 0;
 
-    if (newState.turnStatus === 'BANKRUPTCY_PENDING' && currentTurnPlayer.balance >= 0 && !owesRent) {
+    if (newState.turnStatus === 'BANKRUPTCY_PENDING' && canEndTurn) {
       newState.turnStatus = 'MUST_ACT_OR_END';
-    } else if (newState.turnStatus === 'MUST_ACT_OR_END' && (currentTurnPlayer.balance < 0 || owesRent)) {
+    } else if (newState.turnStatus === 'MUST_ACT_OR_END' && !canEndTurn) {
       newState.turnStatus = 'BANKRUPTCY_PENDING';
     }
 
