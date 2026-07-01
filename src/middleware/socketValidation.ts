@@ -30,6 +30,7 @@ export const EndTurnSchema = z.object({
 
 export const DeclareBankruptcySchema = z.object({
   playerId: z.string().min(1),
+  confirmed: z.literal(true),
 });
 
 export const PayJailFineSchema = z.object({

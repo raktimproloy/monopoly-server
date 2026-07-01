@@ -5,6 +5,8 @@ import { generateLog } from '../utils/logGenerator';
 import { toBanglaNum } from '../utils/format';
 
 const AUTO_END_TURN_DELAY_MS = 800;
+/** Match client Go-To-Jail animation (~2400ms) before auto-ending turn. */
+const GO_TO_JAIL_AUTO_END_MS = 2600;
 
 export class ActionService {
   private roomService: RoomService;
@@ -113,7 +115,10 @@ export class ActionService {
     );
 
     if (nextAction === 'AUTO_END_TURN') {
-      this.scheduleAutoEndTurn(roomId, playerId);
+      const delay = finalDescription.includes('সোজা জেলে')
+        ? GO_TO_JAIL_AUTO_END_MS
+        : AUTO_END_TURN_DELAY_MS;
+      this.scheduleAutoEndTurn(roomId, playerId, delay);
     }
 
     return { state: savedState, log: finalDescription };
@@ -655,7 +660,8 @@ export class ActionService {
     }
 
     newState.drawnCard = null;
-    newState.turnStatus = 'MUST_ACT_OR_END';
+    newState.turnStatus =
+      player.balance < 0 ? 'BANKRUPTCY_PENDING' : 'MUST_ACT_OR_END';
 
     const savedState = await this.roomService.updateRoomState(
       roomId,

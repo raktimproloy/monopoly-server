@@ -927,8 +927,16 @@ export class GameController {
         const state = await this.gameService.getRoomState(roomId);
         if (!state) return socket.emit('error_message', 'Game session not found.');
 
-        const turnCheck = antiCheatGuard.verifyTurn(state, playerId);
-        if (!turnCheck.valid) return socket.emit('error_message', turnCheck.error);
+        const memberCheck = antiCheatGuard.verifyMembership(state, playerId);
+        if (!memberCheck.valid) return socket.emit('error_message', memberCheck.error);
+
+        const player = state.players[playerId];
+        const hasDebt =
+          player.balance < 0 ||
+          (state.pendingRentOwed?.debtorId === playerId && state.pendingRentOwed.remainingAmount > 0);
+        if (!hasDebt) {
+          return socket.emit('error_message', 'দেউলিয়া ঘোষণা করতে হলে আপনার ব্যালেন্স নেতিবাচক বা বকেয়া ভাড়া থাকতে হবে।');
+        }
 
         const { state: updatedState, log } = await this.gameService.declareBankruptcy(roomId, playerId);
         this.processBotTurn(roomId, updatedState);
@@ -1058,8 +1066,19 @@ export class GameController {
         } else if (latestState.turnStatus === 'MUST_ACT_OR_END' || latestState.turnStatus === 'BANKRUPTCY_PENDING') {
           const botPlayer = latestState.players[currentTurnPlayerId];
           if (botPlayer.balance < 0) {
-            const { state: updatedState, log } = await this.gameService.declareBankruptcy(roomId, currentTurnPlayerId);
-            this.processBotTurn(roomId, updatedState);
+            const mortgagable = Object.values(latestState.properties).find(
+              (p) => p.ownerId === currentTurnPlayerId && !p.isMortgaged
+            );
+            if (mortgagable) {
+              const { state: updatedState } = await this.gameService.mortgageProperty(
+                roomId,
+                currentTurnPlayerId,
+                mortgagable.tileIndex
+              );
+              this.processBotTurn(roomId, updatedState);
+              return;
+            }
+            // Never auto-declare bankruptcy — bots stay in debt until resolved manually
             return;
           }
 
