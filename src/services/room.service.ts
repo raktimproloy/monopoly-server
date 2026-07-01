@@ -105,14 +105,48 @@ export const STANDARD_TILES_FALLBACK: BoardTile[] = [
   { index: 39, name: "ঢাকা (ঢাকা)", type: "STREET", price: 400, rent: [50, 200, 600, 1400, 1700, 2000], mortgageValue: 200, houseCost: 200, group: "Dark Blue" }
 ];
 
+/**
+ * In-memory cache for board templates.
+ * Board data is static — never changes during a server's lifetime — so it must
+ * NOT be queried from PostgreSQL on every gameplay action (roll/buy/build/rent).
+ * First lookup hits the DB (and syncs the canonical Bengali tiles once); every
+ * subsequent lookup is served from memory (hot path stays DB-free).
+ */
+type BoardTemplate = { id: number; tiles: BoardTile[] };
+const boardTemplateCache = new Map<string, BoardTemplate>();
+const boardTemplateInFlight = new Map<string, Promise<BoardTemplate>>();
+
 export class RoomService {
   /**
-   * Loads board template from database. Falls back to default if connection fails.
+   * Loads board template with memory caching. Falls back to default if DB fails.
    */
-  async loadBoardTemplate(templateName: string = 'Standard Monopoly'): Promise<{ id: number; tiles: BoardTile[] }> {
+  async loadBoardTemplate(templateName: string = 'Standard Monopoly'): Promise<BoardTemplate> {
+    const cached = boardTemplateCache.get(templateName);
+    if (cached) return cached;
+
     if (stateFlags.useMemoryFallback) {
-      return { id: 1, tiles: STANDARD_TILES_FALLBACK };
+      const fallback: BoardTemplate = { id: 1, tiles: STANDARD_TILES_FALLBACK };
+      boardTemplateCache.set(templateName, fallback);
+      return fallback;
     }
+
+    // De-duplicate concurrent first-load requests (avoid stampede on cold start).
+    const inFlight = boardTemplateInFlight.get(templateName);
+    if (inFlight) return inFlight;
+
+    const loadPromise = this.fetchBoardTemplateFromDb(templateName);
+    boardTemplateInFlight.set(templateName, loadPromise);
+    try {
+      const result = await loadPromise;
+      boardTemplateCache.set(templateName, result);
+      return result;
+    } finally {
+      boardTemplateInFlight.delete(templateName);
+    }
+  }
+
+  /** Cold-path DB fetch — runs once per template, then cached in memory. */
+  private async fetchBoardTemplateFromDb(templateName: string): Promise<BoardTemplate> {
     try {
       const rows = await db.query(
         'SELECT id, board_data FROM board_templates WHERE name = $1 LIMIT 1',
@@ -120,7 +154,7 @@ export class RoomService {
       );
       if (rows.length > 0) {
         if (templateName === 'Standard Monopoly') {
-          // Forcefully sync the DB with the updated Bengali tiles
+          // One-time sync of the canonical Bengali tiles into the DB row.
           await db.query(
             'UPDATE board_templates SET board_data = $1 WHERE id = $2',
             [{ tiles: STANDARD_TILES_FALLBACK }, rows[0].id]

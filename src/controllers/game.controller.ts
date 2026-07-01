@@ -167,8 +167,14 @@ export class GameController {
     socket.on('report_ping', ({ roomId, playerId, ping }: { roomId: string; playerId: string; ping: number }) => {
       if (!roomId || !playerId || typeof ping !== 'number') return;
       if (!roomPlayerPings[roomId]) roomPlayerPings[roomId] = {};
-      roomPlayerPings[roomId][playerId] = Math.round(ping);
-      this.io.to(roomId).emit('player_pings_updated', roomPlayerPings[roomId]);
+      const rounded = Math.round(ping);
+      const previous = roomPlayerPings[roomId][playerId];
+      roomPlayerPings[roomId][playerId] = rounded;
+      // Only fan-out to the room when the value moved meaningfully — avoids a
+      // full-room broadcast every few seconds for negligible jitter.
+      if (previous === undefined || Math.abs(previous - rounded) >= 15) {
+        this.io.to(roomId).emit('player_pings_updated', roomPlayerPings[roomId]);
+      }
     });
 
     // --- 1. Join Room Event ---

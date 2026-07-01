@@ -14,18 +14,42 @@ import cors from 'cors';
 
 dotenv.config();
 
+function parseCorsOrigins(): string | string[] {
+  const raw = process.env.CLIENT_ORIGIN?.trim();
+  if (!raw || raw === '*') return '*';
+  const origins = raw.split(',').map((o) => o.trim()).filter(Boolean);
+  return origins.length === 1 ? origins[0] : origins;
+}
+
+const corsOrigin = parseCorsOrigins();
+
 const app = express();
 app.use(cors({
-  origin: process.env.CLIENT_ORIGIN || '*'
+  origin: corsOrigin
 }));
 const httpServer = createServer(app);
 
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.CLIENT_ORIGIN || '*',
+    origin: corsOrigin,
     methods: ['GET', 'POST'],
     credentials: true
-  }
+  },
+  // Detect dead connections faster than the default (25s/60s) for snappier UX.
+  pingInterval: 20000,
+  pingTimeout: 25000,
+  // Prefer a direct WebSocket upgrade; polling stays available as a fallback.
+  transports: ['websocket', 'polling'],
+  // Game deltas are small JSON — per-message compression adds CPU latency with
+  // little bandwidth benefit, so only compress payloads above a threshold.
+  perMessageDeflate: {
+    threshold: 1024,
+  },
+  httpCompression: {
+    threshold: 1024,
+  },
+  // Small, bounded payloads — reject anything abnormally large early.
+  maxHttpBufferSize: 1e6,
 });
 
 io.use(socketConnectionGuard);
